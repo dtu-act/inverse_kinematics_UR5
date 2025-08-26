@@ -26,9 +26,10 @@ baseDim = [Lx Ly Lz];
 
 % Target positions
 load('Array configurations\positions_line.mat','pos_line');
-r = pos_line;
+r = pos_line(1:20:end,:);
 numPositions = size(r,1);
 targetPositions = r(:,1:3)*1e-3; % Desired end-effector position (XYZ)
+targetPositions(:,2) = targetPositions(:,2)+0.24;
 
 % Note: Quaternions
 % Matlab notation is q = [qx, qy, qz, qw]
@@ -36,17 +37,24 @@ targetPositions = r(:,1:3)*1e-3; % Desired end-effector position (XYZ)
 % q = axang2quat([ux uy uz theta]);
 
 %% ==== Load UR5 Robot ====
-robot = buildUR5WithRod(L0, R0, baseDim);
+robot = buildUR5WithRod(L0, R0);
+% robot = loadrobot('universalUR5', 'DataFormat', 'row', 'Gravity', [0 0 -9.81]);
+
+% Build base as environment
+env = buildBase(baseDim);
+
+% Determine initial position
+initialPosition = homeConfiguration(robot);
 
 % Visualise robot
-% show(robot, 'Collisions', 'on', 'Visuals', 'on');
+% show(robot, initialPosition, 'Collisions', 'on', 'Visuals', 'on');
 % hold on
+% show(env{1})
 % plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 % title('UR5+Rod+Base and Target Position')
 
 %% ==== Plan sequence of configurations ====
-initialPosition = homeConfiguration(robot);
-configs = planPoseSequence(robot, initialPosition, targetPositions);
+configs = planPoseSequence(robot, env, initialPosition, targetPositions);
 
 %% ==== VISUALISE FULL PATH ====
 if ~isempty(configs)
@@ -54,11 +62,14 @@ if ~isempty(configs)
     ax = show(robot, configs(1,:), 'Collisions', 'on', 'Visuals', 'on');
     view(135, 20);
     hold on;
+    show(env{1})
     plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
+    text(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), num2str((1:numPositions)'))
     title('UR5 with Rod: Animated Path');
 
     for i = 1:size(configs,1)
         show(robot, configs(i,:), 'PreservePlot', false, 'Parent', ax);
         pause(0.1); % Adjust speed of animation
+        title(['UR5 with Rod: Animated Path. Conf ' num2str(i)]);
     end
 end

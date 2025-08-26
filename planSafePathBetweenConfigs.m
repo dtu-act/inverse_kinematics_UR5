@@ -1,16 +1,13 @@
-function path = planSafePathBetweenConfigs(robot, startConfig, goalConfig)
+function path = planSafePathBetweenConfigs(robot, env, startConfig, goalConfig)
 %path = planSafePathBetweenConfigs(robot, startConfig, goalConfig)
 %Calculates path between two robot configurations
 
 %% ==== CALCULATE PATH USING MANIPULATOR STATE SPACE ====
-ss = manipulatorStateSpace(robot);
-sv = manipulatorCollisionBodyValidator(ss);
-sv.ValidationDistance = 0.01;
-sv.Environment = {}; % No external collision objects
-
-planner = manipulatorRRT(ss, sv);
+planner = manipulatorRRT(robot, env);
+planner.ValidationDistance = 0.1;
 planner.MaxConnectionDistance = 0.2;
 planner.MaxIterations = 200;
+planner.SkippedSelfCollisions = 'parent';
 
 [pth, ~] = plan(planner, startConfig, goalConfig);
 

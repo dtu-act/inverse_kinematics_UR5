@@ -6,22 +6,25 @@ function [config, success] = solveIKWithCollisionCheck(robot, targetPos, prevPos
 
 %% ==== Set Up IK Solver ====
 ik = inverseKinematics('RigidBodyTree', robot);
-% endEffector = 'rodTip';
-endEffector = 'tool0';
+ik.SolverParameters.SolutionTolerance = 1e-6;
+endEffector = 'rodTip';
+% endEffector = 'tool0';
 
 %% ==== Solve IK with Collision Filtering ====
 success = false;
 config = [];
 
-% Optimises the orientation based on the gradient of the grid
-if isempty(prevPos)
-    % Default pointing direction if no previous point
-    zAxis = [0 0 1];  % e.g., rod pointing downwards
-else
-    % Compute direction vector
-    direction = targetPos - prevPos;
-    zAxis = direction / norm(direction);
-end
+% % Optimises the orientation based on the gradient of the grid
+% if isempty(prevPos)
+%     % Default pointing direction if no previous point
+%     zAxis = [0 0 -1];  % e.g., rod pointing upwards
+% else
+%     % Compute direction vector
+%     direction = targetPos - prevPos;
+%     zAxis = direction / norm(direction);
+% end
+
+zAxis = [0 0 1];
 
 % Build consistent orthonormal frame (Z points along rod)
 temp = [1 0 0];
@@ -49,6 +52,8 @@ for attempt = 1:maxTries
 
     % Solver Inverse Kinematics
     [configSol, ~] = ik(endEffector, targetPose, weights, initialGuess);
+
+    show(robot,configSol)
 
     % Check for collision
     inCollision = checkCollision(robot, configSol, ...
