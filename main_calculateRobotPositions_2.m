@@ -25,19 +25,12 @@ Lz = 1;   % height in Z [m]
 baseDim = [Lx Ly Lz];
 
 % Target positions
-load('Array configurations\positions_line.mat','pos_line');
-r = pos_line(1:10:end,:);
+load('grid_cuboid.mat');
+r = grid_cuboid(1:1e2:3e3,:);
 numPositions = size(r,1);
-targetPositions = r(end:-1:1,1:3)*1e-3;  % mm → m
-targetPositions(:,2) = -targetPositions(:,2);
-targetPositions(:,2) = targetPositions(:,2) - 0.25;
+targetPositions = r(:,1:3); % Only position
 
-% Note: Quaternions
-% Matlab notation is q = [qx, qy, qz, qw]
-% It defines a rotation about an axis by a given angle
-% q = axang2quat([ux uy uz theta]);
-
-clear pos_line
+clear grid
 
 %% ==== Load UR5 Robot ====
 robot = buildUR5WithRod(L0, R0, baseDim);
@@ -65,7 +58,7 @@ rrt.SkippedSelfCollisions = "parent";
 maxTries = 20;
 rng(0)
 ik = inverseKinematics("RigidBodyTree",robot);
-weights = [1 1 1 0 0 0];
+weights = [0 0 0 1 1 1];
 
 % Start pose
 initialPosition = robot.homeConfiguration;      % Used later when calling planPoseSequence
@@ -133,7 +126,7 @@ for iPos = 1:numPositions
     % ---- advance -------------------------------------------------------
     currentConfig = goalCfg;            % ready for next point
 end
-configs = planPoseSequence(robot, initialPosition, targetPositions);
+configs = planPoseSequence(robot, initialPosition, targetPositions); % ???
 
 %% ==== VISUALISE FULL PATH ====
 if ~isempty(configs)

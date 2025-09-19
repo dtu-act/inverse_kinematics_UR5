@@ -2,9 +2,9 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
                                 targetPos,prevConfig,oriSamples,randGuesses)
 
 % 1. IK object
-ik                 = inverseKinematics('RigidBodyTree',robot);
+ik = inverseKinematics('RigidBodyTree',robot);
 ik.SolverParameters.SolutionTolerance = 1e-3;  % default tolerance
-weights            = [1 1 1 0.2 0.2 0.2];    % give a small but non-zero weight
+weights            = [0 0 0 1 1 1];    % give a small but non-zero weight
 
 % Initialise info structure
 info            = struct();
@@ -51,7 +51,7 @@ for k = 1:oriSamples
 
         % -- 2d) reject if resulting posture is in collision
         % Check collision but ignore self-collisions to widen feasible set
-        isColl = checkCollision(robot,cfg,'IgnoreSelfCollision','on');
+        isColl = checkCollision(robot,cfg,SkippedSelfCollisions="parent");
         if isColl
             continue
         end

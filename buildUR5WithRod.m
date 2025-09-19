@@ -30,19 +30,21 @@ setFixedTransform(tipJoint, trvec2tform([0 0 L0]));  % place at tip
 tipBody.Joint = tipJoint;
 addBody(robot, tipBody, 'rod');
 
-% %% ==== ATTACH BASE ====
-% % Define base as rigid body with fixed joint
-% robotBase = rigidBody('robotBase');
-% baseJoint = rigidBodyJoint('robotBaseJoint', 'fixed');
-% 
-% % Position it under the robot
+%% ==== ATTACH BASE ====
+% Define base as rigid body with fixed joint
+robotBase = rigidBody('robotBase');
+baseJoint = rigidBodyJoint('robotBaseJoint', 'fixed');
+
+% Position it under the robot
 % setFixedTransform(baseJoint, trvec2tform([0 0 -baseDim(3)/2]));  % base is below origin
-% robotBase.Joint = baseJoint;
-% 
-% % Add collision geometry: box centered at origin
-% addCollision(robotBase, collisionBox(baseDim(1), baseDim(2), baseDim(3)));
-% 
-% % Attach to main robot tree
-% addBody(robot, robotBase, robot.BaseName);
+setFixedTransform(baseJoint, trvec2tform([0 0 0]));
+robotBase.Joint = baseJoint;
+
+% Add collision geometry: box centered at origin
+baseCollisionTform = trvec2tform([0 0 -baseDim(3)/2]);
+addCollision(robotBase, collisionBox(baseDim(1), baseDim(2), baseDim(3)), baseCollisionTform);
+
+% Attach to main robot tree
+addBody(robot, robotBase, 'base_link');
 
 end
