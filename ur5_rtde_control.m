@@ -1,37 +1,112 @@
+%UR5_ROD_RRT_IK  Control a real UR5 with attached rod to visit a 3-D grid of target points.
+%
+%   This script connects to a Universal Robots UR5 via RTDE, builds a
+%   simulation model of the UR5 with a metallic rod and base, and uses
+%   collision-aware inverse kinematics (IK) plus a manipulator RRT planner
+%   to move the real robot through a sequence of Cartesian target positions.
+%
+%   -------------------------------------------------------------------------
+%   WORKFLOW
+%   -------------------------------------------------------------------------
+%   1) **Clear Workspace** – reset variables, figures, and command window.
+%   2) **Parameter Setup**
+%        • Metallic rod: length (L0) and radius (R0).
+%        • Base dimensions: [Lx Ly Lz].
+%        • IK tolerance (posTol), number of random orientation samples
+%          (maxTriesIK), and random initial guesses per orientation
+%          (maxRandGuess).
+%   3) **Target Grid** – load a 3-D grid from grid_cuboid.mat, decimate it,
+%      and translate it by a user-defined centroid.
+%   4) **Connect to Real UR5** – establish an RTDE client, read current joint
+%      configuration, and display the live robot state.
+%   5) **Simulation Model** – create a UR5 with rod and rectangular base
+%      using BUILDUR5WITHROD for collision checking and visualization.
+%   6) **RRT Planner** – create a manipulatorRRT object, ignoring
+%      parent–child self-collisions.
+%   7) **Move to Home Pose** – plan a collision-free path from the current
+%      robot pose to the UR5 home configuration and execute it on the real
+%      robot with FOLLOWJOINTWAYPOINTS.
+%   8) **Iterative Motion Planning**
+%        • For each target point:
+%            – Solve IK with IKPOSITIONCOLLISIONAWARE to reach the position.
+%            – Validate residual pose error.
+%            – Plan a collision-free path from the previous configuration.
+%            – Animate the path in simulation.
+%            – Command the UR5 to follow the path in hardware.
+%
+%   -------------------------------------------------------------------------
+%   KEY VARIABLES
+%   -------------------------------------------------------------------------
+%   L0, R0         : Rod length and radius [m].
+%   baseDim        : [Lx Ly Lz] base block dimensions [m].
+%   posTol         : Allowed Cartesian position error [m].
+%   maxTriesIK     : Random orientation samples per target.
+%   maxRandGuess   : Random initial guesses per orientation.
+%   centroid       : [x y z] translation applied to the loaded grid.
+%   targetPositions: N×3 matrix of target Cartesian points [m].
+%   qs             : N×6 matrix of solved joint configurations.
+%   posError       : 1×N vector of final Cartesian errors [m].
+%
+%   -------------------------------------------------------------------------
+%   REQUIREMENTS
+%   -------------------------------------------------------------------------
+%   • MATLAB Robotics System Toolbox.
+%   • Auxiliary functions:
+%        – BUILDUR5WITHROD(L0,R0,baseDim): returns a rigidBodyTree model
+%          of the UR5 with attached rod and base.
+%        – IKPOSITIONCOLLISIONAWARE: collision-aware inverse kinematics.
+%   • Data file: grid_cuboid.mat containing variable grid_cuboid.
+%   • Hardware: Universal Robots UR5 reachable at the specified IP address
+%     (default '10.59.33.149') and configured for RTDE.
+%
+%   -------------------------------------------------------------------------
+%   USAGE
+%   -------------------------------------------------------------------------
+%   1. Make sure the UR5 is powered on and in a safe, cleared workspace.
+%   2. Adjust IP address and parameters as needed.
+%   3. Run this script:
+%
+%        >> UR5_Rod_RRT_IK
+%
+% Author: Antonio Figueroa-Duran
+% Contact: anfig@dtu.dk
+
 %% ==== Clear workspace ====
 clear, clc, close all
 
 %% ==== Parameters ====
-% Metallic rod
-L0 = 0.42; % Length of the metallic rod [meters]
-R0 = 0.01; % Radius of the metallic rod [meters]
+% Robot: Metallic rod
+L0 = 0.42;      % Length of the metallic rod [meters]
+R0 = 0.01;      % Radius of the metallic rod [meters]
 
-% Robot base
-Lx = 0.08;   % length in X [m]
-Ly = 0.08;   % width in Y [m]
-Lz = 1;   % height in Z [m]
+% Robot: Base
+Lx = 0.08;      % length in X [m]
+Ly = 0.08;      % width in Y [m]
+Lz = 1;         % height in Z [m]
 baseDim = [Lx Ly Lz];
 
-% IK position tolerance
-posTol = 1e-3; % Position tolerance [meters]
+% IK: position tolerance
+posTol = 1e-3;          % Position tolerance [meters]
+maxTriesIK   = 100;     % IK: orientation samples
+maxRandGuess = 10;      % IK: 10 random initial guesses per orientation
 
-% Target positions
+% Target positions: centred array grid + centroid
+centroid = [1 0 0];     % New custom array centre
 load('grid_cuboid.mat');
-r = grid_cuboid(1:1e2:end,:);
-numPositions = size(r,1);
-targetPositions = r(:,1:3); % Only position
-targetPositions(:,3) = targetPositions(:,3)-0.8;
+
+targetPositions = grid_cuboid(1:2:end,:) + centroid;
+numPositions = size(targetPositions,1);
 
 clear grid_cuboid
 
 %% ==== Connect to UR5 ====
 ur = urRTDEClient('10.59.33.149','CobotName','universalUR5');
 
-%%
-jointAngles = readJointConfiguration(ur);
-
 % Current robot state
+jointAngles = readJointConfiguration(ur);
+figure
 show(ur.RigidBodyTree,jointAngles)
+title('Real robot: current configuration')
 
 %% ==== Load UR5 Robot ====
 robot = buildUR5WithRod(L0, R0, baseDim);
@@ -41,38 +116,40 @@ robot = buildUR5WithRod(L0, R0, baseDim);
 env = {};
 
 % Visualise robot
-figure(1)
+figure
 show(robot, 'Collisions', 'on', 'Visuals', 'on');
 hold on
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
 text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+hold off
 title('UR5+Rod+Base and Target Position')
 
 %% ==== Creat RRT planner ====
 rrt = manipulatorRRT(robot,env);
 rrt.SkippedSelfCollisions = "parent";
 
-%% Go to home configuration
-q0 = homeConfiguration(robot);
-[result,state] = sendJointConfigurationAndWait(ur,q0,'EndTime',5);
+%% Send robot to home configuration
+qInitial = homeConfiguration(robot);    % Home config as initial guess
+
+path = plan(rrt, jointAngles, qInitial);
+
+disp('Ready to move the robot?...'), pause
+% [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
+followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 
 %% ==== Plan sequence of configurations ====
-ndof = length(q0);
-qs = zeros(numPositions, ndof);
-maxTriesIK   = 100;     % IK: orientation samples
-maxRandGuess = 10;      % IK: 10 random initial guesses per orientation
+ndof = length(qInitial);
+qs = nan(numPositions, ndof);
 
-ik = inverseKinematics('RigidBodyTree', robot);
-weights = [0, 0, 0, 1, 1, 1];   % weights = [roll pitch yaw x y z]
 endEffector = 'rodTip';
 
-qInitial = q0; % Use home configuration as the initial guess
-
+rng(0)  % Ensure reproducibility in IK calculations
 posError = nan(1,numPositions);
 for iPos = 1:numPositions
     disp(['---- Position ' num2str(iPos) ' -----'])
+
     % ---- IK ------------------------------------------------------------
     % Solve for the configuration satisfying the desired end effector position
     point = targetPositions(iPos,:);
@@ -80,16 +157,15 @@ for iPos = 1:numPositions
                    point, qInitial, ...
                    maxTriesIK, maxRandGuess);
 
-    if ~info.success     % custom flag we set inside ikPositionCollisionAware
+    % If IK fails to reach the point
+    if ~info.success
         warning('IK failed for point %d. Skipping pose.', iPos);
         continue
     end
 
-    qs(iPos,:) = qSol;      % Store the configuration
-
     % Re-compute FK to check residual error
     eeTform = getTransform(robot, qSol, endEffector);
-    posError(iPos) = norm(eeTform(1:3,4).' - targetPositions(iPos,:), 2);
+    posError(iPos) = norm(eeTform(1:3,4).' - point, 2);
     if (posError(iPos) > posTol)
         disp(['ERROR: Pos ' num2str(iPos) ' not reachable by ' num2str(posError(iPos)*1e2) ' cm'])
     end
@@ -102,6 +178,7 @@ for iPos = 1:numPositions
     end
 
     % Start from prior solution
+    qs(iPos,:) = qSol;      % Store the configuration
     qInitial = qSol;
 
     % Visualise
@@ -119,26 +196,8 @@ for iPos = 1:numPositions
         pause(0.1)
     end
     hold off
-    pause
 
-    %% Send path to UR5
-    % followJointWaypoints(ur, path', 'BlendRadius', 0.02)
-end
-
-%% ==== VISUALISE FULL PATH ====
-figure(3)
-show(robot,qs(1,:), 'Collisions', 'on', 'Visuals', 'on');
-ax = gca;
-ax.Projection = 'orthographic';
-hold on
-plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
-text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
-text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-
-framesPerSecond = 15;
-r = rateControl(framesPerSecond);
-for iPos = 1:numPositions
-    show(robot,qs(iPos,:), 'Collisions', 'on', 'Visuals', 'on','PreservePlot',false);
-    drawnow
-    waitfor(r);
+    % Send path to UR5
+    disp('Ready to move the robot?...'), pause
+    followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 end
