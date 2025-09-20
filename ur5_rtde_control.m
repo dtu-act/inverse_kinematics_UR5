@@ -102,10 +102,10 @@ clear grid_cuboid
 %% ==== Connect to UR5 ====
 ur = urRTDEClient('10.59.33.149','CobotName','universalUR5');
 
-% Current robot state
+%% Current robot state
 jointAngles = readJointConfiguration(ur);
 figure
-show(ur.RigidBodyTree,jointAngles)
+show(ur.RigidBodyTree,jointAngles,'collision','on')
 title('Real robot: current configuration')
 
 %% ==== Load UR5 Robot ====
@@ -136,8 +136,8 @@ qInitial = homeConfiguration(robot);    % Home config as initial guess
 path = plan(rrt, jointAngles, qInitial);
 
 disp('Ready to move the robot?...'), pause
-% [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
-followJointWaypoints(ur, path', 'BlendRadius', 0.02)
+[result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
+% followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 
 %% ==== Plan sequence of configurations ====
 ndof = length(qInitial);
@@ -201,3 +201,6 @@ for iPos = 1:numPositions
     disp('Ready to move the robot?...'), pause
     followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 end
+
+%% send email when done
+% sendmail('anfig@dtu.dk','MATLAB: measurements done','Im done here!');

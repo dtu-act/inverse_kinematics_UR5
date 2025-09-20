@@ -43,7 +43,7 @@ clear grid_cuboid
 
 %% ==== Connect to SOUNDCARD ====
 infoDev = audiodevinfo;
-nameDev = '';
+nameDev = 'ASIO Fireface USB';
 % infoDev.output.Name
 
 playRec = audioPlayerRecorder(fs,"SupportVariableSize",true,...
@@ -205,3 +205,5 @@ for iPos = 1:numPositions
 end
 
 %% ==== Optional: send email when finished ====
+sendmail('anfig@dtu.dk','ARMando has finished', ...
+    'ARMando, your favorite cobot, has finished measuring. Come collect your IRs!');
