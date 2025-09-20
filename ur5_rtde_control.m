@@ -91,10 +91,10 @@ maxTriesIK   = 100;     % IK: orientation samples
 maxRandGuess = 10;      % IK: 10 random initial guesses per orientation
 
 % Target positions: centred array grid + centroid
-centroid = [1 0 0];     % New custom array centre
+centroid = [1 0 0.35];     % New custom array centre (aligned with Lspk)
 load('grid_cuboid.mat');
 
-targetPositions = grid_cuboid(1:2:end,:) + centroid;
+targetPositions = grid_cuboid + centroid;
 numPositions = size(targetPositions,1);
 
 clear grid_cuboid
@@ -103,22 +103,41 @@ clear grid_cuboid
 ur = urRTDEClient('10.59.33.149','CobotName','universalUR5');
 
 %% Current robot state
+% IMPORTANT NOTE:
+% The real robot's reference is the opposite to the simulations. When
+% visualising the real robot (i.e. using ur.RigidBodyTree), the X-axis is
+% pointing towards the opposite direction
+
 jointAngles = readJointConfiguration(ur);
 figure
 show(ur.RigidBodyTree,jointAngles,'collision','on')
 title('Real robot: current configuration')
 
-%% ==== Load UR5 Robot ====
+%% ==== Load UR5 Robot & define environment ====
 robot = buildUR5WithRod(L0, R0, baseDim);
 % showdetails(robot)
 
-% Environment
-env = {};
+% Pos robot wrt global world
+posRobot = [1.47 1.84 1];
+
+% Environment: kitchen
+fridge  = collisionBox(0.6, 0.6, 2);   % (Lx, Ly, Lz)
+counter = collisionBox(2.4, 0.7, 2);
+
+fridgePosition = [0.3, 2.30, 1.0];
+counterPosition = [1.2, 0.35, 1];
+
+fridge.Pose  = trvec2tform(fridgePosition-posRobot); % behind robot
+counter.Pose = trvec2tform(counterPosition-posRobot); % to robot’s right
+
+env = {fridge, counter};
 
 % Visualise robot
 figure
-show(robot, 'Collisions', 'on', 'Visuals', 'on');
+show(robot, jointAngles, 'Collisions', 'on', 'Visuals', 'on');
 hold on
+show(fridge);
+show(counter);
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -136,8 +155,8 @@ qInitial = homeConfiguration(robot);    % Home config as initial guess
 path = plan(rrt, jointAngles, qInitial);
 
 disp('Ready to move the robot?...'), pause
-[result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
-% followJointWaypoints(ur, path', 'BlendRadius', 0.02)
+% [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
+followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 
 %% ==== Plan sequence of configurations ====
 ndof = length(qInitial);
@@ -190,11 +209,17 @@ for iPos = 1:numPositions
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+            show(fridge);
+            show(counter);
         end
         view(2)
         drawnow
         pause(0.1)
     end
+    show(robot,interpPath(end,:));
+    view(2)
+    drawnow
+    hold off
     hold off
 
     % Send path to UR5
