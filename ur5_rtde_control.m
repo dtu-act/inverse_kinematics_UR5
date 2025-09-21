@@ -12,9 +12,7 @@
 %   2) **Parameter Setup**
 %        • Metallic rod: length (L0) and radius (R0).
 %        • Base dimensions: [Lx Ly Lz].
-%        • IK tolerance (posTol), number of random orientation samples
-%          (maxTriesIK), and random initial guesses per orientation
-%          (maxRandGuess).
+%        • IK tolerance (posTol)
 %   3) **Target Grid** – load a 3-D grid from grid_cuboid.mat, decimate it,
 %      and translate it by a user-defined centroid.
 %   4) **Connect to Real UR5** – establish an RTDE client, read current joint
@@ -40,8 +38,6 @@
 %   L0, R0         : Rod length and radius [m].
 %   baseDim        : [Lx Ly Lz] base block dimensions [m].
 %   posTol         : Allowed Cartesian position error [m].
-%   maxTriesIK     : Random orientation samples per target.
-%   maxRandGuess   : Random initial guesses per orientation.
 %   centroid       : [x y z] translation applied to the loaded grid.
 %   targetPositions: N×3 matrix of target Cartesian points [m].
 %   qs             : N×6 matrix of solved joint configurations.
@@ -76,7 +72,7 @@ clear, clc, close all
 
 %% ==== Parameters ====
 % Robot: Metallic rod
-L0 = 0.42;      % Length of the metallic rod [meters]
+L0 = 0.59;      % Length of the metallic rod [meters]
 R0 = 0.01;      % Radius of the metallic rod [meters]
 
 % Robot: Base
@@ -87,14 +83,16 @@ baseDim = [Lx Ly Lz];
 
 % IK: position tolerance
 posTol = 1e-3;          % Position tolerance [meters]
-maxTriesIK   = 100;     % IK: orientation samples
-maxRandGuess = 10;      % IK: 10 random initial guesses per orientation
 
 % Target positions: centred array grid + centroid
 centroid = [1 0 0.35];     % New custom array centre (aligned with Lspk)
 load('grid_cuboid.mat');
 
-targetPositions = grid_cuboid + centroid;
+% Sample nPosSample positions
+nPosSample = 100;
+posIdx = sort(randperm(size(grid_cuboid,1),nPosSample));
+
+targetPositions = grid_cuboid(posIdx,:) + centroid;
 numPositions = size(targetPositions,1);
 
 clear grid_cuboid
@@ -109,8 +107,8 @@ ur = urRTDEClient('10.59.33.149','CobotName','universalUR5');
 % pointing towards the opposite direction
 
 jointAngles = readJointConfiguration(ur);
-figure
-show(ur.RigidBodyTree,jointAngles,'collision','on')
+figure(1)
+show(ur.RigidBodyTree,jointAngles,'collision','on');
 title('Real robot: current configuration')
 
 %% ==== Load UR5 Robot & define environment ====
@@ -118,26 +116,27 @@ robot = buildUR5WithRod(L0, R0, baseDim);
 % showdetails(robot)
 
 % Pos robot wrt global world
-posRobot = [1.47 1.84 1];
+posRobot = [1.31 3.22 1];
 
-% Environment: kitchen
-fridge  = collisionBox(0.6, 0.6, 2);   % (Lx, Ly, Lz)
-counter = collisionBox(2.4, 0.7, 2);
+% Environment: SFR
+backWall  = collisionBox(0.2, 2, 3);   % (Lx, Ly, Lz)
+desktop = collisionBox(0.8, 1.2, 1.4);
 
-fridgePosition = [0.3, 2.30, 1.0];
-counterPosition = [1.2, 0.35, 1];
+backWallPosition = [0.1, 3.22, 1.5];
+desktopPosition = [0.6, 4.4, 0.7];
 
-fridge.Pose  = trvec2tform(fridgePosition-posRobot); % behind robot
-counter.Pose = trvec2tform(counterPosition-posRobot); % to robot’s right
+backWall.Pose  = trvec2tform(backWallPosition-posRobot); % behind robot
+desktop.Pose = trvec2tform(desktopPosition-posRobot); % to robot’s right
 
-env = {fridge, counter};
+env = {backWall, desktop};
 
 % Visualise robot
-figure
+jointAngles = readJointConfiguration(ur);
+figure(2)
 show(robot, jointAngles, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(fridge);
-show(counter);
+show(backWall);
+show(desktop);
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -151,8 +150,31 @@ rrt.SkippedSelfCollisions = "parent";
 
 %% Send robot to home configuration
 qInitial = homeConfiguration(robot);    % Home config as initial guess
+jointAngles = readJointConfiguration(ur);
 
 path = plan(rrt, jointAngles, qInitial);
+
+% Visualise
+interpPath = interpolate(rrt,path);
+figure(2)
+clf
+for i = 1:20:size(interpPath,1)
+    show(robot,interpPath(i,:)); hold on
+    if i == 1
+        plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
+        text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
+        text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+        show(backWall);
+        show(desktop);
+    end
+    view(2)
+    drawnow
+    pause(0.1)
+end
+show(robot,interpPath(end,:));
+view(2)
+drawnow
+hold off
 
 disp('Ready to move the robot?...'), pause
 % [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
@@ -173,8 +195,7 @@ for iPos = 1:numPositions
     % Solve for the configuration satisfying the desired end effector position
     point = targetPositions(iPos,:);
     [qSol,info] = ikPositionCollisionAware(robot,endEffector, ...
-                   point, qInitial, ...
-                   maxTriesIK, maxRandGuess);
+                   point, qInitial);
 
     % If IK fails to reach the point
     if ~info.success
@@ -202,6 +223,7 @@ for iPos = 1:numPositions
 
     % Visualise
     interpPath = interpolate(rrt,path);
+    figure(2)
     clf
     for i = 1:20:size(interpPath,1)
         show(robot,interpPath(i,:)); hold on
@@ -209,8 +231,8 @@ for iPos = 1:numPositions
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-            show(fridge);
-            show(counter);
+            show(backWall);
+            show(desktop);
         end
         view(2)
         drawnow
@@ -220,11 +242,17 @@ for iPos = 1:numPositions
     view(2)
     drawnow
     hold off
-    hold off
 
     % Send path to UR5
-    disp('Ready to move the robot?...'), pause
+    % disp('Ready to move the robot?...'), pause
     followJointWaypoints(ur, path', 'BlendRadius', 0.02)
+
+    % Wait for the robot to move
+    jointVelocity = readJointVelocity(ur);
+    while sum(abs(jointVelocity)) > 0
+        jointVelocity = readJointVelocity(ur);
+    end
+    pause(0.05)
 end
 
 %% send email when done

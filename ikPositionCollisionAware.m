@@ -1,5 +1,5 @@
 function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
-                                targetPos,prevConfig,oriSamples,randGuesses)
+    targetPos,prevConfig)
 %IKPOSITIONCOLLISIONAWARE  Solve collision-aware inverse kinematics (IK) for a target position.
 %
 %   [CONFIGSOL,INFO] = IKPOSITIONCOLLISIONAWARE(ROBOT,EENAME,TARGETPOS, ...
@@ -16,11 +16,6 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 %                   in the base frame (meters).
 %     PREVCONFIG  – n×1 vector of joint positions used as the preferred
 %                   “seed” for continuity.
-%     ORISAMPLES  – (optional) number of random orientation samples to try.
-%                   Each sample is a uniform random quaternion.  Required.
-%     RANDGUESSES – (optional) number of random configuration guesses to try
-%                   for each orientation sample (default = 1).  The first
-%                   guess is always PREVCONFIG.
 %
 %   OUTPUTS
 %     CONFIGSOL   – n×1 vector of joint positions for a collision-free IK
@@ -71,7 +66,8 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 
 % 1. IK object
 ik = inverseKinematics('RigidBodyTree',robot);
-ik.SolverParameters.SolutionTolerance = 1e-3;  % default tolerance
+ik.SolverParameters.SolutionTolerance = 1e-3;   % default tolerance
+ik.SolverParameters.EnforceJointLimits = true;  % True by default
 weights = [0 0 0 1 1 1];     % weights = [roll pitch yaw x y z]
 
 % Initialise info structure
@@ -81,68 +77,75 @@ info.attempts   = 0;           % how many IK attempts performed
 info.IKStatus   = "";          % Status string from last IK call
 info.PoseErrorNorm = [];       % Pose error from last IK call
 
-% Provide default for randGuesses if omitted
-if nargin < 6 || isempty(randGuesses)
-    randGuesses = 1;
-end
+% Provide max for randGuesses
+randGuesses = 50;
 
 % 2. Search loop
 configSol = [];
 attemptCnt = 0;
 found = false;
 bestCost = inf;
-for k = 1:oriSamples
-    % -- 2a) choose a random orientation (uniform quaternion)
-    qOri = randomQuaternion();
-    targetTform = trvec2tform(targetPos) * quat2tform(qOri);
 
-    for g = 1:randGuesses
-        attemptCnt = attemptCnt + 1;
+for g = 1:randGuesses
+    attemptCnt = attemptCnt + 1;
 
-        % Initial guess: first one is prevConfig for continuity
-        if g == 1
-            qInit = prevConfig;
-        else
-            qInit = randomConfiguration(robot);
-        end
-
-        % -- Solve IK
-        [cfg,solInfo] = ik(eeName,targetTform,weights,qInit);
-
-        % Record last IK info (overwritten each attempt; ok for diagnostics)
-        info.IKStatus       = solInfo.Status;
-        info.PoseErrorNorm  = solInfo.PoseErrorNorm;
-
-        % -- 2c) reject if IK did not converge; accept anything but 'failure'
-        if strcmp(solInfo.Status,'failure')
-            continue
-        end
-
-        % -- 2d) reject if resulting posture is in collision
-        % Check collision but ignore self-collisions to widen feasible set
-        isColl = checkCollision(robot,cfg,SkippedSelfCollisions="parent");
-        if isColl
-            continue
-        end
-
-        % -- 2e) compute joint-change cost
-        cost = norm(cfg - prevConfig,2);
-        if cost < 1e-3 % practically identical to previous pose
-            configSol = cfg;
-            info.success = true;
-            info.attempts = attemptCnt;
-            return          % early exit for speed
-        end
-        % keep best in case early exit criterion not met
-        if ~found || cost < bestCost
-            bestCost = cost;
-            configSol = cfg;
-            found = true;
-            info.success = true;
-        end
+    % Initial guess: first one is prevConfig for continuity
+    if g == 1
+        qInit = prevConfig;
+    else
+        qInit = randomConfiguration(robot);
     end
-    if found
-        break   % break outer loop too
+
+    % -- Solve IK
+    [cfg,solInfo] = ik(eeName,trvec2tform(targetPos),weights,qInit);
+
+    % Record last IK info (overwritten each attempt; ok for diagnostics)
+    info.IKStatus       = solInfo.Status;
+    info.PoseErrorNorm  = solInfo.PoseErrorNorm;
+
+    % -- 2c) reject if IK did not converge; accept anything but 'failure'
+    if strcmp(solInfo.Status,'failure')
+        continue
+    end
+
+    % -- 2d) reject if resulting posture is in collision
+    % Check collision but ignore self-collisions to widen feasible set
+    isColl = checkCollision(robot,cfg,SkippedSelfCollisions="parent");
+    if isColl
+        continue
+    end
+
+    % % -- 2e) reject if resulting posture exceeds joint limits
+    % cfgVec = cfg(:);   % ensure column
+    % lower = zeros(size(cfgVec));
+    % upper = zeros(size(cfgVec));
+    % 
+    % for k = 1:numel(cfgVec)
+    %     body = robot.getBody(jointNames{k});
+    %     lims = body.Joint.PositionLimits;
+    %     lower(k) = lims(1);
+    %     upper(k) = lims(2);
+    % end
+    % 
+    % allOK = all(cfgVec >= lower & cfgVec <= upper);
+    % if ~allOK
+    %     continue
+    % end
+
+    % -- 2f) compute joint-change cost
+    cost = norm(cfg - prevConfig,2);
+    if cost < 1e-3 % practically identical to previous pose
+        configSol = cfg;
+        info.success = true;
+        info.attempts = attemptCnt;
+        return          % early exit for speed
+    end
+    % keep best in case early exit criterion not met
+    if ~found || cost < bestCost
+        bestCost = cost;
+        configSol = cfg;
+        found = true;
+        info.success = true;
     end
 end
 
@@ -152,13 +155,4 @@ info.attempts = attemptCnt;
 if ~info.success
     configSol = [];
 end
-end
-
-% ---------- helper: uniform random quaternion ---------------------------
-function q = randomQuaternion()
-u1 = rand; u2 = rand; u3 = rand;
-q  = [ sqrt(1-u1)*sin(2*pi*u2) , ...
-       sqrt(1-u1)*cos(2*pi*u2) , ...
-       sqrt(u1)  *sin(2*pi*u3) , ...
-       sqrt(u1)  *cos(2*pi*u3) ];
 end
