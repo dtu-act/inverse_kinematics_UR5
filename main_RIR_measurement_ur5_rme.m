@@ -1,24 +1,35 @@
 %% ==== Clear workspace ====
 clear, clc, close all
 
+try % Wrap to send log over email
+    logFile = fullfile(tempdir, 'matlab_log.txt');
+    diary(logFile);
+    diary on;
+
+
 %% ==== Parameters ====
 % RIR: measurement parameters
-T = 5;          % Sweep length [s]
+T = 3;          % Sweep length [s]
 Toff = 1;       % Silence length = RIR length [s]
 fs = 48e3;      % Sampling frequency [Hz]
 Fband = [20 20E3];  % Sweep bandwidth
 Nsamples = fs*(T+Toff); % A-priori number of samples
-gain_nexus = 100e-3;    % Nexus gain
-gain_sweep = -4;        % Sweep gain
+gain_nexus = 1;    % Nexus gain [V/Pa]
+gain_sweep = -7;        % Sweep gain
 frameSize = 512;        % Frame size to minimise latency
-maxRep = 2;             % Max repetitions in case of samples over/underrun
+maxRep = 3;             % Max repetitions in case of samples over/underrun
 
 % RIR: folder and file structure
-folderData = 'Data/Kitchen/';
+folderData = 'Data/SFControlRoom/';
 fileNamePrefix = 'cuboid_RIR_pos_';
 
-% Robot: Metallic rod
-L0 = 0.42;      % Length of the metallic rod [meters]
+% Room conditions
+roomDimensions = [6.08 5.76 3.08]; % Room dimensions [m x m x m]
+tempC = 18.8;       % Temperature [C]
+humidityRH = 73.2;  % Relative humidity [%RH]
+
+% Robot: Metallic rod (plastic + rod + microphone)
+L0 = 0.59;      % Length of the metallic rod [meters]
 R0 = 0.01;      % Radius of the metallic rod [meters]
 
 % Robot: Base
@@ -29,14 +40,12 @@ baseDim = [Lx Ly Lz];
 
 % IK: position tolerance
 posTol = 1e-3;          % Position tolerance [meters]
-maxTriesIK   = 100;     % IK: orientation samples
-maxRandGuess = 10;      % IK: 10 random initial guesses per orientation
 
 % Target positions: centred array grid + centroid
-centroid = [1 0 0];     % New custom array centre
+centroid = [1 0 0.35];     % New custom array centre
 load('grid_cuboid.mat');
 
-targetPositions = grid_cuboid(1:2:end,:) + centroid;
+targetPositions = grid_cuboid + centroid;
 numPositions = size(targetPositions,1);
 
 clear grid_cuboid
@@ -61,22 +70,44 @@ playRec.PlayerChannelMapping = 1;
 ur = urRTDEClient('10.59.33.149','CobotName','universalUR5');
 
 % Current robot state
+% IMPORTANT NOTE:
+% The real robot's reference is the opposite to the simulations. When
+% visualising the real robot (i.e. using ur.RigidBodyTree), the X-axis is
+% pointing towards the opposite direction
 jointAngles = readJointConfiguration(ur);
-figure
-show(ur.RigidBodyTree,jointAngles)
-title('Real robot: current configuration')
+figure(1)
+show(ur.RigidBodyTree,jointAngles);
+title('Real robot: current configuration. X-axis is flipped')
 
 %% ==== Load UR5 Robot ====
 robot = buildUR5WithRod(L0, R0, baseDim);
 % showdetails(robot)
 
-% Environment
-env = {};
+% Pos robot wrt global world
+posRobotGlobal = [1.31 3.22 1];
+
+% Pos source wrt global world
+posSourceGlobal = [4.81 1.37 1.35];
+
+% Environment: kitchen
+margin = 5e-2;     % Distance margin to collision boxes [m]
+backWall  = collisionBox(0.2 + margin, 2 + margin, 3 + margin);   % (Lx, Ly, Lz)
+desktop = collisionBox(0.8 + margin, 1.2 + margin, 1.4 + margin);
+
+backWallPosition = [0.1, 3.22, 1.5];
+desktopPosition = [0.6, 4.4, 0.7];
+
+backWall.Pose  = trvec2tform(backWallPosition-posRobotGlobal); % behind robot
+desktop.Pose = trvec2tform(desktopPosition-posRobotGlobal); % to robot’s right
+
+env = {backWall, desktop};
 
 % Visualise robot
-figure
+figure(2)
 show(robot, 'Collisions', 'on', 'Visuals', 'on');
 hold on
+show(backWall);
+show(desktop);
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -93,6 +124,26 @@ qInitial = homeConfiguration(robot);    % Home config as initial guess
 
 path = plan(rrt, jointAngles, qInitial);
 
+% Visualise
+interpPath = interpolate(rrt,path);
+figure(2)
+clf
+for i = 1:20:size(interpPath,1)
+    show(robot,interpPath(i,:),'Collisions','on'); hold on
+    if i == 1
+        show(backWall);
+        show(desktop);
+        plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
+        text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
+        text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+    end
+    view(2)
+    drawnow
+    pause(0.1)
+end
+show(robot,interpPath(i,:),'Collisions','on');
+hold off
+
 disp('Ready to move the robot?...'), pause
 % [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
 followJointWaypoints(ur, path', 'BlendRadius', 0.02)
@@ -106,7 +157,7 @@ Nh = fs*Toff;
 t = 0:1/fs:Toff-1/fs;
 
 % Gen sweep
-sweep = sweeptone(T,Toff,fs,'SweepFrequencyRange',Fband,'ExcitationLevel',gainSweep);
+sweep = sweeptone(T,Toff,fs,'SweepFrequencyRange',Fband,'ExcitationLevel',gain_sweep);
 
 % Slice sweep
 audioToPlay = reshape(sweep,frameSize,Nsamples/frameSize);
@@ -122,6 +173,13 @@ if ~exist(folderData,'dir')
     mkdir(folderData)
 end
 
+% Save metadata
+save([folderData 'metadata'])
+
+disp('Leave the room now!...')
+pause(45)
+
+tic;
 rng(0)  % Ensure reproducibility in IK calculations
 posError = nan(1,numPositions);
 for iPos = 1:numPositions
@@ -131,8 +189,7 @@ for iPos = 1:numPositions
     % Solve for the configuration satisfying the desired end effector position
     point = targetPositions(iPos,:);
     [qSol,info] = ikPositionCollisionAware(robot,endEffector, ...
-                   point, qInitial, ...
-                   maxTriesIK, maxRandGuess);
+                   point, qInitial);
 
     % If IK fails to reach the point
     if ~info.success
@@ -156,10 +213,13 @@ for iPos = 1:numPositions
 
     % Visualise
     interpPath = interpolate(rrt,path);
+    figure(2)
     clf
     for i = 1:20:size(interpPath,1)
-        show(robot,interpPath(i,:)); hold on
+        show(robot,interpPath(i,:),'Collisions','on'); hold on
         if i == 1
+            show(backWall);
+            show(desktop);
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -168,13 +228,24 @@ for iPos = 1:numPositions
         drawnow
         pause(0.1)
     end
+    show(robot,interpPath(i,:),'Collisions','on');
     hold off
 
     % Send path to UR5
-    disp('Ready to move the robot?...'), pause
+    % disp('Ready to move the robot?...'), pause
     followJointWaypoints(ur, path', 'BlendRadius', 0.02)
+    
+    % Wait for the robot to move
+    jointVelocity = readJointVelocity(ur);
+    while sum(abs(jointVelocity)) > 0
+        jointVelocity = readJointVelocity(ur);
+    end
+    pause(1)
 
-    % Start from prior solution
+    % Verify connection is still operative (not confirmed this works)
+    jointAngles = readJointConfiguration(ur);
+
+    % Next position: Start from prior solution
     qs(iPos,:) = qSol;      % Store the configuration
     qInitial = qSol;
 
@@ -185,14 +256,13 @@ for iPos = 1:numPositions
 
     % Gain Nexus + RME
     p_meas = p_meas/gain_nexus;
-    p_meas = p_meas*RMECorrection;
 
     % Calculate RIR
     rir = impzest(sweep,p_meas);
 
     % Plot RIR
-    if iPos == 1, figure, hold on, end
-    if rem(iPos, 25) == 0
+    if iPos == 1, figure(3), hold on, end
+    if iPos == 1 || mod(iPos, 25) == 0
         plot(t,rir), grid on
         xlabel('Time /s'), title('Impulse response')
     end
@@ -201,9 +271,28 @@ for iPos = 1:numPositions
     position = targetPositions(iPos,:);
     fileName = [folderData fileNamePrefix num2str(iPos,'%04.f')];
     save(fileName,'rir','p_meas','position');
-    printf(['Data saved to ' fileName])
+    disp(['Data saved to ' fileName])
 end
 
 %% ==== Optional: send email when finished ====
+% End logging
+fprintf('Elapsed time: %s\n', datetime(0,0,0,0,0,toc,'Format','HH:mm:ss'))
+diary off;
+
 sendmail('anfig@dtu.dk','ARMando has finished', ...
-    'ARMando, your favorite cobot, has finished measuring. Come collect your IRs!');
+    'ARMando, your favorite cobot, has finished measuring. Come and collect your IRs!',{logFile});
+
+%%
+catch ME
+    % Save the crash log
+    logFile = fullfile(tempdir, 'crash_log.txt');
+    fid = fopen(logFile,'w');
+    fprintf(fid, '%s\n', getReport(ME,'extended','hyperlinks','off'));
+    fclose(fid);
+
+    % Send the email with the log attached
+    sendmail('anfig@dtu.dk','ARMando had trouble :(', ...
+             'An error occurred. Log attached.', {logFile});
+
+    rethrow(ME);  % optional: still show the error in MATLAB
+end
