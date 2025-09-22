@@ -9,13 +9,13 @@ fs = 48e3;      % Sampling frequency [Hz]
 Fband = [20 20E3];  % Sweep bandwidth
 Nsamples = fs*(T+Toff); % A-priori number of samples
 gain_nexus = 1;    % Nexus gain [V/Pa]
-gain_sweep = -7;        % Sweep gain
+gain_sweep = -15;        % Sweep gain
 maxRep = 2;             % Max repetitions in case of samples over/underrun
 numMicPos = 6;          % Num microphone positions per source position
 numSourcePos = 3;       % Num source positions
 
 % RIR: folder and file structure
-folderData = 'Data/Kitchen/RT/';
+folderData = 'Data/Test/';
 fileNamePrefix = 'single_RIR_';
 
 % Room conditions
@@ -26,33 +26,29 @@ humidityRH = 61.4;  % Relative humidity [%RH]
 %% ==== Connect to SOUNDCARD ====
 % Configure NI USB4431
 out_range    = [-3.5 3.5];
-in_range     = [-3.5 3.5];
 
-% d = daqlist('ni')
+d = daqlist('ni');
+devName = d.DeviceID;  % Assume only one card is connected
 ni = daq('ni');
 ni.Rate = fs;
 
 % Output
-ni.addoutput('Dev5',0,'Voltage');
+ni.addoutput(devName,0,'Voltage');
 ni.Channels(1).Range = out_range;
 
 % Inputs
-ni.addinput('Dev5',0,'Voltage');
-ni.Channels(2).Range = in_range;
+ni.addinput(devName,0,'Voltage');
+
+% Check channels:
+% ni.Channels
 
 %% ==== Create exponential sweep ====
-% Adapt sweep length to obtain full frames (initial RIR length is modified)
-nFrames = ceil(Nsamples/frameSize);
-Nsamples = nFrames*frameSize;
-Toff = Nsamples/fs - T;
 Nh = fs*Toff;
 t = 0:1/fs:Toff-1/fs;
+f = (0:Nh/2-1)*fs/Nh;
 
 % Gen sweep
 sweep = sweeptone(T,Toff,fs,'SweepFrequencyRange',Fband,'ExcitationLevel',gain_sweep);
-
-% Slice sweep
-audioToPlay = reshape(sweep,frameSize,Nsamples/frameSize);
 
 %% ==== Run measurements ====
 % Check for folder
@@ -61,9 +57,9 @@ if ~exist(folderData,'dir')
 end
 
 % Save metadata
-save([folderData 'metadata'])
+% save([folderData 'metadata'])
 
-figure, hold on
+figure(1)
 for sPos = 1:numSourcePos
     disp(['---- Source Position ' num2str(sPos) ' -----'])
 
@@ -74,8 +70,7 @@ for sPos = 1:numSourcePos
 
         % ---- measure RIR ---------------------------------------------------
         % Play + record signal
-        s.queueOutputData(sweep);
-        p_meas = s.startForeground;
+        p_meas = readwrite(ni,sweep,'OutputFormat','Matrix');
 
         % Gain Nexus + RME
         p_meas = p_meas/gain_nexus;
@@ -83,10 +78,18 @@ for sPos = 1:numSourcePos
         % Calculate RIR
         rir = impzest(sweep,p_meas);
 
-        % Plot RIR
-        plot(t,rir), grid on
-        xlabel('Time /s'), title('Impulse response')
+        rtf = fft(rir)/Nh;
+        rtf = 2*rtf(1:Nh/2);
 
+        % Plot RIR
+        subplot(211), hold on
+        plot(t,fftshift(rir)), grid on
+        xlabel('Time / s'), title('Impulse response')
+
+        subplot(212), hold on
+        plot(f,20*log10(abs(rtf))), grid on
+        xlabel('Frequency / Hz'), title('Frequency response')
+   
         % Save pressure & RIR
         fileName = [folderData fileNamePrefix 's' num2str(sPos,'%02.f') '_m' num2str(mPos,'%02.f')];
         save(fileName,'rir','p_meas');

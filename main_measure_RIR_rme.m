@@ -12,11 +12,11 @@ gain_nexus = 1;    % Nexus gain [V/Pa]
 gain_sweep = -7;        % Sweep gain
 frameSize = 512;        % Frame size to minimise latency
 maxRep = 2;             % Max repetitions in case of samples over/underrun
-numMicPos = 6;          % Num microphone positions per source position
-numSourcePos = 3;       % Num source positions
+numMicPos = 1;          % Num microphone positions per source position
+numSourcePos = 1;       % Num source positions
 
 % RIR: folder and file structure
-folderData = 'Data/Kitchen/RT/';
+folderData = 'Data/Test';
 fileNamePrefix = 'single_RIR_';
 
 % Room conditions
@@ -63,8 +63,9 @@ end
 % Save metadata
 % save([folderData 'metadata'])
 
-figure, hold on
-for sPos = 2:numSourcePos
+figure(1), hold on
+figure(2)
+for sPos = 1:numSourcePos
     disp(['---- Source Position ' num2str(sPos) ' -----'])
 
     for mPos = 1:numMicPos
@@ -84,8 +85,13 @@ for sPos = 2:numSourcePos
         rir = impzest(sweep,p_meas);
 
         % Plot RIR
+        figure(1)
         plot(t,rir), grid on
         xlabel('Time /s'), title('Impulse response')
+
+        % Plot spectrogram
+        figure(2)
+        spectrogram(p_meas,512)
 
         % Save pressure & RIR
         fileName = [folderData fileNamePrefix 's' num2str(sPos,'%02.f') '_m' num2str(mPos,'%02.f')];
