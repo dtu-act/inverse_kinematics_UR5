@@ -15,13 +15,13 @@ numMicPos = 6;          % Num microphone positions per source position
 numSourcePos = 3;       % Num source positions
 
 % RIR: folder and file structure
-folderData = 'Data/Test/';
+folderData = 'Data/SFControlRoom/RT/';
 fileNamePrefix = 'single_RIR_';
 
 % Room conditions
 roomDimensions = [6.7 6.25 3.0]; % Room dimensions [m x m x m]
-tempC = 24.2;       % Temperature [C]
-humidityRH = 61.4;  % Relative humidity [%RH]
+tempC = 20.0;       % Temperature [C]
+humidityRH = 59.2;  % Relative humidity [%RH]
 
 %% ==== Connect to SOUNDCARD ====
 % Configure NI USB4431
@@ -57,7 +57,7 @@ if ~exist(folderData,'dir')
 end
 
 % Save metadata
-% save([folderData 'metadata'])
+save([folderData 'metadata'])
 
 figure(1)
 for sPos = 1:numSourcePos
@@ -72,7 +72,7 @@ for sPos = 1:numSourcePos
         % Play + record signal
         p_meas = readwrite(ni,sweep,'OutputFormat','Matrix');
 
-        % Gain Nexus + RME
+        % Gain Nexus
         p_meas = p_meas/gain_nexus;
 
         % Calculate RIR
@@ -83,7 +83,8 @@ for sPos = 1:numSourcePos
 
         % Plot RIR
         subplot(211), hold on
-        plot(t,fftshift(rir)), grid on
+        plot(t,rir), grid on
+        xlim([0 100e-3])
         xlabel('Time / s'), title('Impulse response')
 
         subplot(212), hold on
