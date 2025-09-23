@@ -2,9 +2,15 @@
 clear, clc, close all
 
 try % Wrap to send log over email
+    if strcmp(get(0,'Diary'), 'on')
+        diary off
+    end
+    
     logFile = fullfile(tempdir, 'matlab_log.txt');
+    delete(logFile)
     diary(logFile);
-    diary on;
+    diary off
+    diary on
 
 
 %% ==== Parameters ====
@@ -25,7 +31,7 @@ fileNamePrefix = 'cuboid_RIR_pos_';
 % Room conditions
 roomDimensions = [6.08 5.76 3.08]; % Room dimensions [m x m x m]
 tempC = 18.8;       % Temperature [C]
-humidityRH = 73.2;  % Relative humidity [%RH]
+humidityRH = 65.1;  % Relative humidity [%RH]
 
 % Robot: Metallic rod (plastic + rod + microphone)
 L0 = 0.59;      % Length of the metallic rod [meters]
@@ -174,7 +180,7 @@ save([folderData 'metadata'])
 % RIR visualisation
 figure(3), hold on
 
-disp('Leave the room now!...')
+disp('Leave the room now!...'), pause
 pause(45)
 
 tic;

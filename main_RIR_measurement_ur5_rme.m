@@ -2,6 +2,12 @@
 clear, clc, close all
 
 try % Wrap to send log over email
+    if strcmp(get(0,'Diary'), 'on')
+        diary off
+    end
+    
+    logFile = fullfile(tempdir, 'matlab_log.txt');
+    delete(logFile)
     logFile = fullfile(tempdir, 'matlab_log.txt');
     diary(logFile);
     diary on;
