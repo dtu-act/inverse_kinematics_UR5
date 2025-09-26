@@ -15,14 +15,13 @@ numMicPos = 6;          % Num microphone positions per source position
 numSourcePos = 3;       % Num source positions
 
 % RIR: folder and file structure
-folderData = 'Data/SFControlRoom/RT/';
+folderData = 'Data/Kitchen/RT/';
 fileNamePrefix = 'single_RIR_';
 
 % Room conditions
-roomDimensions = [6.7 6.25 3.0]; % Room dimensions [m x m x m]
-tempC = 20.0;       % Temperature [C]
-humidityRH = 59.2;  % Relative humidity [%RH]
-
+roomDimensions = [6.71 6.25 3.02]; % Room dimensions [m x m x m]
+tempC = 22.7;       % Temperature [C]
+humidityRH = 52.2;  % Relative humidity [%RH]
 %% ==== Connect to SOUNDCARD ====
 % Configure NI USB4431
 out_range    = [-3.5 3.5];
@@ -60,7 +59,7 @@ end
 save([folderData 'metadata'])
 
 figure(1)
-for sPos = 1:numSourcePos
+for sPos = 2:numSourcePos
     disp(['---- Source Position ' num2str(sPos) ' -----'])
 
     for mPos = 1:numMicPos
