@@ -116,27 +116,28 @@ robot = buildUR5WithRod(L0, R0, baseDim);
 % showdetails(robot)
 
 % Pos robot wrt global world
-posRobot = [1.31 3.22 1];
+posRobotGlobal = [1.31 1.86 1];
 
-% Environment: SFR
-backWall  = collisionBox(0.2, 2, 3);   % (Lx, Ly, Lz)
-desktop = collisionBox(0.8, 1.2, 1.4);
+% Environment: kitchen
+margin = 5e-2;     % Distance margin to collision boxes [m]
+fridge = collisionBox(0.7 + margin, 0.6 + margin, 2 + margin);   % (Lx, Ly, Lz)
+counter = collisionBox(2.5 + margin, 0.7 + margin, 2 + margin);
 
-backWallPosition = [0.1, 3.22, 1.5];
-desktopPosition = [0.6, 4.4, 0.7];
+fridgePosition = [0.35, 2.45, 1];
+counterPosition = [1.25, 0.35, 1];
 
-backWall.Pose  = trvec2tform(backWallPosition-posRobot); % behind robot
-desktop.Pose = trvec2tform(desktopPosition-posRobot); % to robot’s right
+fridge.Pose = trvec2tform(fridgePosition-posRobotGlobal); % behind robot
+counter.Pose = trvec2tform(counterPosition-posRobotGlobal);
 
-env = {backWall, desktop};
+env = {fridge, counter};
 
 % Visualise robot
 jointAngles = readJointConfiguration(ur);
 figure(2)
 show(robot, jointAngles, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(backWall);
-show(desktop);
+show(fridge);
+show(counter);
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -164,8 +165,8 @@ for i = 1:20:size(interpPath,1)
         plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
         text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
         text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-        show(backWall);
-        show(desktop);
+        show(fridge);
+        show(counter);
     end
     view(2)
     drawnow
@@ -198,6 +199,7 @@ for iPos = 1:numPositions
                    point, qInitial);
 
     % If IK fails to reach the point
+
     if ~info.success
         warning('IK failed for point %d. Skipping pose.', iPos);
         continue
@@ -231,8 +233,8 @@ for iPos = 1:numPositions
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-            show(backWall);
-            show(desktop);
+            show(fridge);
+            show(counter);
         end
         view(2)
         drawnow
@@ -253,6 +255,13 @@ for iPos = 1:numPositions
         jointVelocity = readJointVelocity(ur);
     end
     pause(0.05)
+
+    % Verify connection is still operative by comparing target vs real
+    % joint configuration
+    jointAngles = readJointConfiguration(ur);
+    if rad2deg(norm(jointAngles-qSol)) > 3
+        error(['Connection lost at position ' num2str(iPos)])
+    end
 end
 
 %% send email when done

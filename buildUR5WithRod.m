@@ -47,4 +47,10 @@ addCollision(robotBase, collisionBox(baseDim(1), baseDim(2), baseDim(3)), baseCo
 % Attach to main robot tree
 addBody(robot, robotBase, 'base_link');
 
+%% ==== ENFORCE STRICTER JOINT LIMITATIONS ====
+for idxRevJoints = 3:8
+    robot.Bodies{idxRevJoints}.Joint.PositionLimits = ...
+        robot.Bodies{idxRevJoints}.Joint.PositionLimits*0.99;
+end
+
 end

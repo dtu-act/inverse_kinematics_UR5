@@ -115,24 +115,7 @@ for g = 1:randGuesses
         continue
     end
 
-    % % -- 2e) reject if resulting posture exceeds joint limits
-    % cfgVec = cfg(:);   % ensure column
-    % lower = zeros(size(cfgVec));
-    % upper = zeros(size(cfgVec));
-    % 
-    % for k = 1:numel(cfgVec)
-    %     body = robot.getBody(jointNames{k});
-    %     lims = body.Joint.PositionLimits;
-    %     lower(k) = lims(1);
-    %     upper(k) = lims(2);
-    % end
-    % 
-    % allOK = all(cfgVec >= lower & cfgVec <= upper);
-    % if ~allOK
-    %     continue
-    % end
-
-    % -- 2f) compute joint-change cost
+    % -- 2e) compute joint-change cost
     cost = norm(cfg - prevConfig,2);
     if cost < 1e-3 % practically identical to previous pose
         configSol = cfg;

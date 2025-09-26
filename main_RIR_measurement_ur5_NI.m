@@ -2,14 +2,11 @@
 clear, clc, close all
 
 try % Wrap to send log over email
-    if strcmp(get(0,'Diary'), 'on')
-        diary off
-    end
+    if strcmp(get(0,'Diary'), 'on'), diary off, end
     
     logFile = fullfile(tempdir, 'matlab_log.txt');
-    delete(logFile)
+    if exist(logFile,'file'), delete(logFile), end
     diary(logFile);
-    diary off
     diary on
 
 
@@ -25,13 +22,13 @@ gain_sweep = -15;        % Sweep gain
 maxRep = 3;             % Max repetitions in case of samples over/underrun
 
 % RIR: folder and file structure
-folderData = 'Data/SFControlRoom/CuboidData/';
+folderData = 'Data/Kitchen/CuboidData/';
 fileNamePrefix = 'cuboid_RIR_pos_';
 
 % Room conditions
-roomDimensions = [6.08 5.76 3.08]; % Room dimensions [m x m x m]
-tempC = 18.8;       % Temperature [C]
-humidityRH = 65.1;  % Relative humidity [%RH]
+roomDimensions = [6.71 6.25 3.02]; % Room dimensions [m x m x m]
+tempC = 22.7;       % Temperature [C]
+humidityRH = 52.2;  % Relative humidity [%RH]
 
 % Robot: Metallic rod (plastic + rod + microphone)
 L0 = 0.59;      % Length of the metallic rod [meters]
@@ -92,30 +89,30 @@ robot = buildUR5WithRod(L0, R0, baseDim);
 % showdetails(robot)
 
 % Pos robot wrt global world
-posRobotGlobal = [1.31 3.22 1];
+posRobotGlobal = [1.31 1.86 1];
 
 % Pos source wrt global world
-posSourceGlobal = [4.87 1.19 1.35];
+posSourceGlobal = [3.68 5.60 1.35];
 
 % Environment: kitchen
 margin = 5e-2;     % Distance margin to collision boxes [m]
-backWall  = collisionBox(0.2 + margin, 2 + margin, 3 + margin);   % (Lx, Ly, Lz)
-desktop = collisionBox(0.8 + margin, 1.2 + margin, 1.4 + margin);
+fridge = collisionBox(0.7 + margin, 0.6 + margin, 2 + margin);   % (Lx, Ly, Lz)
+counter = collisionBox(2.5 + margin, 0.7 + margin, 1 + margin);
 
-backWallPosition = [0.1, 3.22, 1.5];
-desktopPosition = [0.6, 4.4, 0.7];
+fridgePosition = [0.35, 2.45, 1];
+counterPosition = [1.25, 0.35, 0.5];
 
-backWall.Pose  = trvec2tform(backWallPosition-posRobotGlobal); % behind robot
-desktop.Pose = trvec2tform(desktopPosition-posRobotGlobal); % to robot’s right
+fridge.Pose = trvec2tform(fridgePosition-posRobotGlobal); % behind robot
+counter.Pose = trvec2tform(counterPosition-posRobotGlobal);
 
-env = {backWall, desktop};
+env = {fridge, counter};
 
 % Visualise robot
 figure(2)
 show(robot, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(backWall);
-show(desktop);
+show(fridge);
+show(counter);
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -139,8 +136,8 @@ clf
 for i = 1:20:size(interpPath,1)
     show(robot,interpPath(i,:),'Collisions','on'); hold on
     if i == 1
-        show(backWall);
-        show(desktop);
+        show(fridge);
+        show(counter);
         plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
         text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
         text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -181,7 +178,7 @@ save([folderData 'metadata'])
 figure(3), hold on
 
 disp('Leave the room now!...'), pause
-pause(45)
+% pause(45)
 
 tic;
 rng(0)  % Ensure reproducibility in IK calculations
@@ -222,8 +219,8 @@ for iPos = 1:numPositions
     for i = 1:20:size(interpPath,1)
         show(robot,interpPath(i,:),'Collisions','on'); hold on
         if i == 1
-            show(backWall);
-            show(desktop);
+            show(fridge);
+            show(counter);
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -246,8 +243,12 @@ for iPos = 1:numPositions
     end
     pause(1)
 
-    % Verify connection is still operative (not confirmed this works)
+    % Verify connection is still operative by comparing target vs real
+    % joint configuration
     jointAngles = readJointConfiguration(ur);
+    if rad2deg(norm(jointAngles-qSol)) > 3
+        error(['Connection lost at position ' num2str(iPos) '!'])
+    end
 
     % Next position: Start from prior solution
     qs(iPos,:) = qSol;      % Store the configuration
@@ -264,9 +265,9 @@ for iPos = 1:numPositions
     rir = impzest(sweep,p_meas);
 
     % Plot RIR
-    if iPos == 1 || mod(iPos, 3) == 0
+    if iPos == 1 || mod(iPos, 150) == 0
         figure(3)
-        plot(t,rir), grid on, xlim([0 200e-3])
+        plot(t,rir), grid on, xlim([0 6])
         xlabel('Time /s'), title('Impulse response')
     end
 
@@ -275,12 +276,20 @@ for iPos = 1:numPositions
     fileName = [folderData fileNamePrefix num2str(iPos,'%04.f')];
     save(fileName,'rir','p_meas','position');
     disp(['Data saved to ' fileName])
+
+    % For long measurements: send emails every X measurements
+    if mod(iPos,5e2) == 0
+        diary off
+        sendmail('anfig@dtu.dk',['ARMando has reach pos ' num2str(iPos)], ...
+            'Find log attached!',{logFile});
+        diary on
+    end
 end
 
 %% ==== Optional: send email when finished ====
 % End logging
 fprintf('Elapsed time: %s\n', datetime(0,0,0,0,0,toc,'Format','HH:mm:ss'))
-diary off;
+diary off
 
 sendmail('anfig@dtu.dk','ARMando has finished', ...
     'ARMando, your favorite cobot, has finished measuring. Come and collect your IRs!',{logFile});
