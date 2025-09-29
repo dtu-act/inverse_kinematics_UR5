@@ -18,7 +18,7 @@ fs = 48e3;      % Sampling frequency [Hz]
 Fband = [20 20E3];  % Sweep bandwidth
 Nsamples = fs*(T+Toff); % A-priori number of samples
 gain_nexus = 1;    % Nexus gain [V/Pa]
-gain_sweep = -15;        % Sweep gain
+gain_sweep = -12;        % Sweep gain
 maxRep = 3;             % Max repetitions in case of samples over/underrun
 
 % RIR: folder and file structure
@@ -178,7 +178,7 @@ save([folderData 'metadata'])
 figure(3), hold on
 
 disp('Leave the room now!...'), pause
-% pause(45)
+pause(45)
 
 tic;
 rng(0)  % Ensure reproducibility in IK calculations
@@ -267,7 +267,7 @@ for iPos = 1:numPositions
     % Plot RIR
     if iPos == 1 || mod(iPos, 150) == 0
         figure(3)
-        plot(t,rir), grid on, xlim([0 6])
+        plot(t,rir), grid on, xlim([0 100e-3])
         xlabel('Time /s'), title('Impulse response')
     end
 
@@ -278,12 +278,12 @@ for iPos = 1:numPositions
     disp(['Data saved to ' fileName])
 
     % For long measurements: send emails every X measurements
-    if mod(iPos,5e2) == 0
-        diary off
-        sendmail('anfig@dtu.dk',['ARMando has reach pos ' num2str(iPos)], ...
-            'Find log attached!',{logFile});
-        diary on
-    end
+    % if mod(iPos,5e2) == 0
+    %     diary off
+    %     sendmail('anfig@dtu.dk',['ARMando has reach pos ' num2str(iPos)], ...
+    %         'Find log attached!',{logFile});
+    %     diary on
+    % end
 end
 
 %% ==== Optional: send email when finished ====

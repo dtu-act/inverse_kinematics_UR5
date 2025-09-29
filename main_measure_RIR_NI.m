@@ -12,7 +12,7 @@ gain_nexus = 1;    % Nexus gain [V/Pa]
 gain_sweep = -15;        % Sweep gain
 maxRep = 2;             % Max repetitions in case of samples over/underrun
 numMicPos = 6;          % Num microphone positions per source position
-numSourcePos = 3;       % Num source positions
+numSourcePos = 1;       % Num source positions
 
 % RIR: folder and file structure
 folderData = 'Data/Kitchen/RT/';
@@ -56,10 +56,10 @@ if ~exist(folderData,'dir')
 end
 
 % Save metadata
-save([folderData 'metadata'])
+% save([folderData 'metadata'])
 
 figure(1)
-for sPos = 2:numSourcePos
+for sPos = 1:numSourcePos
     disp(['---- Source Position ' num2str(sPos) ' -----'])
 
     for mPos = 1:numMicPos
