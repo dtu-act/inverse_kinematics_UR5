@@ -1,16 +1,115 @@
+%UR5_RIR_MEASUREMENT_RME  Measure Room Impulse Responses (RIRs) with UR5 robot
+%                        using RME Fireface soundcard for playback/recording.
+%
+%   This script connects to a real UR5 robot, moves it through a sequence of
+%   collision-free joint configurations corresponding to target positions in 
+%   a predefined grid, and records room impulse responses (RIRs) at each 
+%   position using a swept-sine excitation. Results are logged, saved, and 
+%   optionally emailed upon completion or error.
+%
+%   -------------------------------------------------------------------------
+%   WORKFLOW
+%   -------------------------------------------------------------------------
+%   1) Clear MATLAB workspace, figures, and command window.
+%   2) Start logging (diary) to a temporary file for error tracking.
+%   3) Define experiment parameters:
+%        • RIR acquisition settings (sweep length, bandwidth, sampling rate, 
+%          repetitions, device channels, etc.).
+%        • Room/environment description loaded from JSON scenario file.
+%        • Robot geometry: UR5 manipulator with metallic rod + microphone.
+%        • Inverse kinematics tolerance and target grid points.
+%   4) Connect to the audio interface (playback + recording).
+%   5) Connect to UR5 robot using RTDE client.
+%   6) Build UR5+rod model and environment collision objects, visualise setup.
+%   7) Create a manipulatorRRT planner for collision-free motion.
+%   8) Send robot to home configuration safely via planned path.
+%   9) Generate an exponential swept-sine for RIR measurement.
+%  10) Loop through all target grid positions:
+%        • Solve collision-aware IK for rod tip position.
+%        • Plan path via RRT, send trajectory to robot, and verify motion.
+%        • Measure and process RIR at each position.
+%        • Save results (RIR, raw signal, position) to disk.
+%        • Optionally log progress or send periodic emails.
+%  11) When finished, stop logging and send completion email with log.
+%  12) If an error occurs, catch it, save crash log, and notify by email.
+%
+%   -------------------------------------------------------------------------
+%   KEY VARIABLES
+%   -------------------------------------------------------------------------
+%   T, Toff, fs, Fband : Sweep parameters (length, silence, sample rate, band).
+%   gain_nexus, gain_sweep : Input/output calibration gains.
+%   frameSize, maxRep : Audio buffer/frame size and max repetitions.
+%   scenario, env     : Room/environment description and collision objects.
+%   L0, R0, baseDim   : Rod and robot base dimensions [m].
+%   posRobotGlobal    : Robot base placement in world coordinates [m].
+%   posSourceGlobal   : Source placement in world coordinates [m].
+%   targetPositions   : N×3 matrix of Cartesian measurement points [m].
+%   playRec           : audioPlayerRecorder object for playback/recording.
+%   ur                : RTDE client connected to UR5 robot.
+%   rrt               : manipulatorRRT planner object.
+%   qs                : N×nDOF matrix of joint configurations visited.
+%   rir, p_meas       : Measured RIR and raw microphone pressure data.
+%
+%   -------------------------------------------------------------------------
+%   REQUIREMENTS
+%   -------------------------------------------------------------------------
+%   • MATLAB Robotics System Toolbox & Audio Toolbox.
+%   • Auxiliary functions:
+%        – buildUR5WithRod(L0,R0,baseDim): returns UR5 rigidBodyTree model 
+%          with rod and base attached.
+%        – ikPositionCollisionAware: collision-aware IK solver for rod tip.
+%        – get_dataRME: wrapper for playback/recording with retry handling.
+%   • Data files:
+%        – grid_cuboid.mat with grid_cuboid variable (Cartesian grid points).
+%        – JSON scenario files (e.g., Environment/kitchen.json).
+%   • Hardware:
+%        – RME Fireface audio interface (ASIO driver).
+%        – Brüel & Kjær Nexus preamp (gain calibration).
+%        – UR5 robot with rod-mounted microphone.
+%
+%   -------------------------------------------------------------------------
+%   USAGE
+%   -------------------------------------------------------------------------
+%   Save the script (e.g., UR5_RIR_Measurement.m) and run:
+%
+%       >> UR5_RIR_Measurement
+%
+%   The script will:
+%       • Move the robot safely through all target points.
+%       • Record and save RIRs in the specified folder structure.
+%       • Provide live visualisation of robot, environment, and impulse 
+%         responses.
+%       • Email logs/results to user on success or failure.
+%
+%   -------------------------------------------------------------------------
+%   OUTPUT
+%   -------------------------------------------------------------------------
+%   • Figures:
+%        – UR5+rod and environment visualisation.
+%        – RIR plots at sample positions.
+%   • Files:
+%        – RIRs and metadata saved to /Data/<scenario>/CuboidData/.
+%        – Log file in system temp directory.
+%   • Emails:
+%        – Progress/error messages sent automatically if configured.
+%
+%   See also BUILDUR5WITHROD, IKPOSITIONCOLLISIONAWARE, GET_DATA_RME,
+%            URRTDECLIENT, AUDIOPLAYERRECORDER, MANIPULATORRRT.
+%
+% Author: Antonio Figueroa-Duran
+% Contact: anfig@dtu.dk
+
+
 %% ==== Clear workspace ====
 clear, clc, close all
 
 try % Wrap to send log over email
-    if strcmp(get(0,'Diary'), 'on')
-        diary off
-    end
+    if strcmp(get(0,'Diary'), 'on'), diary off, end
     
     logFile = fullfile(tempdir, 'matlab_log.txt');
-    delete(logFile)
-    logFile = fullfile(tempdir, 'matlab_log.txt');
+    if exist(logFile,'file'), delete(logFile), end
     diary(logFile);
-    diary on;
+    diary on
 
 
 %% ==== Parameters ====
@@ -25,14 +124,18 @@ gain_sweep = -7;        % Sweep gain
 frameSize = 512;        % Frame size to minimise latency
 maxRep = 3;             % Max repetitions in case of samples over/underrun
 
-% RIR: folder and file structure
-folderData = 'Data/SFControlRoom/';
-fileNamePrefix = 'cuboid_RIR_pos_';
+% Load scenario
+scenarioName = 'Kitchen';
+scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
 
 % Room conditions
-roomDimensions = [6.08 5.76 3.08]; % Room dimensions [m x m x m]
-tempC = 18.8;       % Temperature [C]
-humidityRH = 73.2;  % Relative humidity [%RH]
+roomDimensions = scenario.room_dimensions;  % Room dimensions [m x m x m]
+tempC = 22.7;       % Temperature [C]
+humidityRH = 52.2;  % Relative humidity [%RH]
+
+% RIR: folder and file structure
+folderData = ['Data/' scenarioName '/CuboidData/'];
+fileNamePrefix = 'cuboid_RIR_pos_';
 
 % Robot: Metallic rod (plastic + rod + microphone)
 L0 = 0.59;      % Length of the metallic rod [meters]
@@ -97,23 +200,20 @@ posSourceGlobal = [4.81 1.37 1.35];
 
 % Environment: kitchen
 margin = 5e-2;     % Distance margin to collision boxes [m]
-backWall  = collisionBox(0.2 + margin, 2 + margin, 3 + margin);   % (Lx, Ly, Lz)
-desktop = collisionBox(0.8 + margin, 1.2 + margin, 1.4 + margin);
+nObjects = numel(scenario.objects);
 
-backWallPosition = [0.1, 3.22, 1.5];
-desktopPosition = [0.6, 4.4, 0.7];
-
-backWall.Pose  = trvec2tform(backWallPosition-posRobotGlobal); % behind robot
-desktop.Pose = trvec2tform(desktopPosition-posRobotGlobal); % to robot’s right
-
-env = {backWall, desktop};
+env = cell(1,nObjects);
+for iObj = 1:nObjects
+    dimsPlusMargin = scenario.objects(iObj).dimensions + margin;
+    env{iObj} = collisionBox(dimsPlusMargin(1), dimsPlusMargin(2), dimsPlusMargin(3));   % (Lx, Ly, Lz)
+    env{iObj}.Pose = trvec2tform(scenario.objects(iObj).position'-posRobotGlobal);
+end
 
 % Visualise robot
 figure(2)
 show(robot, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(backWall);
-show(desktop);
+for iObj = 1:nObjects, show(env{iObj}); end
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -137,8 +237,7 @@ clf
 for i = 1:20:size(interpPath,1)
     show(robot,interpPath(i,:),'Collisions','on'); hold on
     if i == 1
-        show(backWall);
-        show(desktop);
+        for iObj = 1:nObjects, show(env{iObj}); end
         plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
         text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
         text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -182,7 +281,10 @@ end
 % Save metadata
 save([folderData 'metadata'])
 
-disp('Leave the room now!...')
+% RIR visualisation
+figure(3), hold on
+
+disp('Leave the room now!...'), pause
 pause(45)
 
 tic;
@@ -224,8 +326,7 @@ for iPos = 1:numPositions
     for i = 1:20:size(interpPath,1)
         show(robot,interpPath(i,:),'Collisions','on'); hold on
         if i == 1
-            show(backWall);
-            show(desktop);
+            for iObj = 1:nObjects, show(env{iObj}); end
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -248,8 +349,12 @@ for iPos = 1:numPositions
     end
     pause(1)
 
-    % Verify connection is still operative (not confirmed this works)
+    % Verify connection is still operative by comparing target vs real
+    % joint configuration
     jointAngles = readJointConfiguration(ur);
+    if rad2deg(norm(jointAngles-qSol)) > 3
+        error(['Connection lost at position ' num2str(iPos) '!'])
+    end
 
     % Next position: Start from prior solution
     qs(iPos,:) = qSol;      % Store the configuration
@@ -267,9 +372,9 @@ for iPos = 1:numPositions
     rir = impzest(sweep,p_meas);
 
     % Plot RIR
-    if iPos == 1, figure(3), hold on, end
-    if iPos == 1 || mod(iPos, 25) == 0
-        plot(t,rir), grid on
+    if iPos == 1 || mod(iPos, 150) == 0
+        figure(3)
+        plot(t,rir), grid on, xlim([0 100e-3])
         xlabel('Time /s'), title('Impulse response')
     end
 
@@ -278,6 +383,14 @@ for iPos = 1:numPositions
     fileName = [folderData fileNamePrefix num2str(iPos,'%04.f')];
     save(fileName,'rir','p_meas','position');
     disp(['Data saved to ' fileName])
+
+    % For long measurements: send emails every X measurements
+    % if mod(iPos,5e2) == 0
+    %     diary off
+    %     sendmail('anfig@dtu.dk',['ARMando has reach pos ' num2str(iPos)], ...
+    %         'Find log attached!',{logFile});
+    %     diary on
+    % end
 end
 
 %% ==== Optional: send email when finished ====

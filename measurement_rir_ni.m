@@ -1,3 +1,42 @@
+%% ========================================================================
+% SCRIPT: Single-position RIR measurement with NI USB4431
+%
+% DESCRIPTION:
+%   This script measures Room Impulse Responses (RIRs) using an exponential
+%   sweep played and recorded via a National Instruments USB-4431 DAQ card.
+%   The sweep is played through a loudspeaker and recorded by one or more
+%   microphones at defined positions. Impulse responses and corresponding
+%   frequency responses are calculated and saved for later analysis.
+%
+% WORKFLOW:
+%   1) Define measurement parameters (sweep, sample rate, repetitions).
+%   2) Load acoustic scenario from a JSON file.
+%   3) Configure NI USB4431 DAQ (output and input voltage channels).
+%   4) Generate exponential sweep signal.
+%   5) For each source and microphone position:
+%        • Play sweep and record microphone signal
+%        • Estimate impulse response (RIR)
+%        • Compute and plot impulse & frequency responses
+%        • Save data to disk
+%
+% INPUTS:
+%   - Scenario JSON file: Environment/<scenarioName>.json
+%
+% OUTPUTS:
+%   - Saved RIRs and raw signals in: Data/<ScenarioName>/RT/
+%   - Figures:
+%       • Impulse response and frequency response (Figure 1)
+%       • Spectrogram of recorded signal (Figure 2)
+%
+% REQUIREMENTS:
+%   • MATLAB Data Acquisition Toolbox
+%   • NI USB-4431 DAQ with configured drivers
+%
+% AUTHOR: Antonio Figueroa-Duran
+% CONTACT: anfig@dtu.dk
+% ========================================================================
+
+
 %% ==== Clear workspace ====
 clear, clc, close all
 
@@ -64,6 +103,7 @@ end
 % save([folderData 'metadata'])
 
 figure(1)
+figure(2)
 for sPos = 1:numSourcePos
     disp(['---- Source Position ' num2str(sPos) ' -----'])
 
@@ -86,6 +126,7 @@ for sPos = 1:numSourcePos
         rtf = 2*rtf(1:Nh/2);
 
         % Plot RIR
+        figure(1)
         subplot(211), hold on
         plot(t,rir), grid on
         xlim([0 100e-3])
@@ -94,6 +135,10 @@ for sPos = 1:numSourcePos
         subplot(212), hold on
         plot(f,20*log10(abs(rtf))), grid on
         xlabel('Frequency / Hz'), title('Frequency response')
+
+        % Plot spectrogram
+        figure(2)
+        spectrogram(p_meas,512)
    
         % Save pressure & RIR
         fileName = [folderData fileNamePrefix 's' num2str(sPos,'%02.f') '_m' num2str(mPos,'%02.f')];

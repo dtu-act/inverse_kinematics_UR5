@@ -1,3 +1,5 @@
+%% Run before using UR5 measurement scripts
+
 % Your Gmail address and app password
 myAddress  = 'youremail@gmail.com';
 myPassword = '16-character-app-password';  % Gmail app-password

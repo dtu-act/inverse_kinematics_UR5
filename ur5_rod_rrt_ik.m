@@ -1,9 +1,10 @@
-%UR5_ROD_RRT_IK  Control a real UR5 with attached rod to visit a 3-D grid of target points.
+%UR5_ROD_RRT_IK  Control a real UR5 with attached rod to visit grid targets inside a scenario environment.
 %
 %   This script connects to a Universal Robots UR5 via RTDE, builds a
 %   simulation model of the UR5 with a metallic rod and base, and uses
 %   collision-aware inverse kinematics (IK) plus a manipulator RRT planner
-%   to move the real robot through a sequence of Cartesian target positions.
+%   to move the real robot through a sequence of Cartesian target positions
+%   defined within a scenario environment.
 %
 %   -------------------------------------------------------------------------
 %   WORKFLOW
@@ -12,25 +13,34 @@
 %   2) **Parameter Setup**
 %        • Metallic rod: length (L0) and radius (R0).
 %        • Base dimensions: [Lx Ly Lz].
-%        • IK tolerance (posTol)
-%   3) **Target Grid** – load a 3-D grid from grid_cuboid.mat, decimate it,
-%      and translate it by a user-defined centroid.
-%   4) **Connect to Real UR5** – establish an RTDE client, read current joint
-%      configuration, and display the live robot state.
-%   5) **Simulation Model** – create a UR5 with rod and rectangular base
-%      using BUILDUR5WITHROD for collision checking and visualization.
-%   6) **RRT Planner** – create a manipulatorRRT object, ignoring
-%      parent–child self-collisions.
-%   7) **Move to Home Pose** – plan a collision-free path from the current
-%      robot pose to the UR5 home configuration and execute it on the real
-%      robot with FOLLOWJOINTWAYPOINTS.
+%        • IK tolerance (posTol).
+%   3) **Scenario & Target Grid**
+%        • Load a JSON environment description (e.g. 'Kitchen') with
+%          `loadScenario`.
+%        • Load a 3-D grid of points from grid_cuboid.mat, decimate it, and
+%          translate by a user-defined centroid.
+%   4) **Connect to Real UR5**
+%        • Establish an RTDE client (`urRTDEClient`).
+%        • Read current joint configuration and display the live robot state.
+%   5) **Simulation Model**
+%        • Build a UR5 with attached rod and rectangular base
+%          (`buildUR5WithRod`).
+%        • Place robot at a global offset (posRobotGlobal).
+%        • Insert collision objects from the scenario with a safety margin.
+%   6) **RRT Planner**
+%        • Create a manipulatorRRT object with the robot and environment.
+%        • Ignore parent–child self-collisions.
+%   7) **Move to Home Pose**
+%        • Plan a collision-free path from the current robot pose to the
+%          UR5 home configuration and execute it on the real robot with
+%          `followJointWaypoints`.
 %   8) **Iterative Motion Planning**
 %        • For each target point:
-%            – Solve IK with IKPOSITIONCOLLISIONAWARE to reach the position.
-%            – Validate residual pose error.
+%            – Solve IK with `ikPositionCollisionAware`.
+%            – Check residual Cartesian error against tolerance.
 %            – Plan a collision-free path from the previous configuration.
 %            – Animate the path in simulation.
-%            – Command the UR5 to follow the path in hardware.
+%            – Send the path to the UR5 and verify motion.
 %
 %   -------------------------------------------------------------------------
 %   KEY VARIABLES
@@ -42,30 +52,37 @@
 %   targetPositions: N×3 matrix of target Cartesian points [m].
 %   qs             : N×6 matrix of solved joint configurations.
 %   posError       : 1×N vector of final Cartesian errors [m].
+%   posRobotGlobal : [x y z] offset of robot base in world frame.
+%   env            : Cell array of collisionBox objects from the scenario.
 %
 %   -------------------------------------------------------------------------
 %   REQUIREMENTS
 %   -------------------------------------------------------------------------
 %   • MATLAB Robotics System Toolbox.
+%   • RTDE client utilities (`urRTDEClient`, `readJointConfiguration`,
+%     `followJointWaypoints`, etc.).
 %   • Auxiliary functions:
-%        – BUILDUR5WITHROD(L0,R0,baseDim): returns a rigidBodyTree model
+%        – buildUR5WithRod(L0,R0,baseDim): returns a rigidBodyTree model
 %          of the UR5 with attached rod and base.
-%        – IKPOSITIONCOLLISIONAWARE: collision-aware inverse kinematics.
-%   • Data file: grid_cuboid.mat containing variable grid_cuboid.
+%        – ikPositionCollisionAware: collision-aware inverse kinematics.
+%   • Data files:
+%        – grid_cuboid.mat containing variable `grid_cuboid`.
+%        – JSON scenario files (e.g. Environment/kitchen.json).
 %   • Hardware: Universal Robots UR5 reachable at the specified IP address
 %     (default '10.59.33.149') and configured for RTDE.
 %
 %   -------------------------------------------------------------------------
 %   USAGE
 %   -------------------------------------------------------------------------
-%   1. Make sure the UR5 is powered on and in a safe, cleared workspace.
-%   2. Adjust IP address and parameters as needed.
+%   1. Make sure the UR5 is powered on and the workspace is clear.
+%   2. Adjust IP address, scenario name, and parameters as needed.
 %   3. Run this script:
 %
 %        >> UR5_Rod_RRT_IK
 %
 % Author: Antonio Figueroa-Duran
 % Contact: anfig@dtu.dk
+
 
 %% ==== Clear workspace ====
 clear, clc, close all
@@ -262,6 +279,3 @@ for iPos = 1:numPositions
         error(['Connection lost at position ' num2str(iPos)])
     end
 end
-
-%% send email when done
-% sendmail('anfig@dtu.dk','MATLAB: measurements done','Im done here!');

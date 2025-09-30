@@ -3,11 +3,11 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 %IKPOSITIONCOLLISIONAWARE  Solve collision-aware inverse kinematics (IK) for a target position.
 %
 %   [CONFIGSOL,INFO] = IKPOSITIONCOLLISIONAWARE(ROBOT,EENAME,TARGETPOS, ...
-%                      PREVCONFIG,ORISAMPLES,RANDGUESSES) attempts to find a
-%   joint configuration CONFIGSOL of the rigid body tree ROBOT such that
-%   the end effector named EENAME reaches the Cartesian position TARGETPOS
-%   while avoiding collisions.  The function searches over randomly sampled
-%   orientations and random initial guesses to improve robustness.
+%                      PREVCONFIG) attempts to find a joint configuration 
+%   CONFIGSOL of the rigid body tree ROBOT such that the end effector named 
+%   EENAME reaches the Cartesian position TARGETPOS while avoiding collisions.  
+%   The function tries multiple random initial guesses in addition to the 
+%   provided PREVCONFIG to improve robustness.
 %
 %   INPUTS
 %     ROBOT       – rigidBodyTree object describing the robot.
@@ -30,17 +30,17 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 %   ALGORITHM
 %     1) Create an inverseKinematics solver for ROBOT with a position-only
 %        objective (weights = [0 0 0 1 1 1]).
-%     2) Loop over ORISAMPLES random orientations.
-%     3) For each orientation, run the IK solver RANDGUESSES times using
-%        PREVCONFIG first, then random joint guesses.
-%     4) Discard solutions that fail IK convergence or are in collision
+%     2) Run the IK solver multiple times:
+%          – First using PREVCONFIG as the initial guess.
+%          – Then using random joint configurations as initial guesses.
+%     3) Discard solutions that fail IK convergence or are in collision
 %        (self-collisions are ignored by setting
 %        'SkippedSelfCollisions'="parent").
-%     5) Return the feasible configuration with minimum joint-space
+%     4) Return the feasible configuration with minimum joint-space
 %        distance from PREVCONFIG.
 %
 %   NOTES
-%     • The random orientation is drawn from a uniform distribution on SO(3).
+%     • Only position is constrained; orientation is ignored.
 %     • Collision checking requires that collision geometries are defined
 %       in the ROBOT model.
 %     • If no solution is found, CONFIGSOL is empty and INFO.success = false.
@@ -50,7 +50,7 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 %     prevCfg = homeConfiguration(robot);
 %     target  = [0.4 0.2 0.3];
 %     [qSol,info] = ikPositionCollisionAware(robot,'EndEffector_Link', ...
-%                                            target,prevCfg,8,3);
+%                                            target,prevCfg);
 %     if info.success
 %         show(robot,qSol); hold on;
 %         plot3(target(1),target(2),target(3),'rx','MarkerSize',10);
@@ -58,7 +58,7 @@ function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
 %         warning('No collision-free IK solution found.');
 %     end
 %
-%   See also INVERSEKINEMATICS, CHECKCOLLISION, TRVEC2TFORM, QUAT2TFORM.
+%   See also INVERSEKINEMATICS, CHECKCOLLISION, TRVEC2TFORM.
 %
 % Author: Antonio Figueroa-Duran
 % Contact: anfig@dtu.dk

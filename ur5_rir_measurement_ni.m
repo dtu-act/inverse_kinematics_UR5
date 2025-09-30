@@ -1,3 +1,106 @@
+%UR5_RIR_MEASUREMENT_NI  Measure Room Impulse Responses (RIRs) with UR5 robot
+%                        using NI USB-4431 DAQ for playback/recording.
+%
+%   This script connects to a real UR5 robot, moves it safely through a 
+%   sequence of collision-free joint configurations corresponding to a 
+%   predefined cuboid grid, and records room impulse responses (RIRs) using 
+%   an exponential sweep played/recorded via a National Instruments USB-4431. 
+%   Logs are stored, results are saved, and completion/crash notifications 
+%   are sent by email.
+%
+%   -------------------------------------------------------------------------
+%   WORKFLOW
+%   -------------------------------------------------------------------------
+%   1) Clear MATLAB workspace, figures, and command window.
+%   2) Start logging (diary) to a temporary file for error tracking.
+%   3) Define experiment parameters:
+%        • RIR acquisition settings (sweep length, bandwidth, sample rate, 
+%          repetitions, DAQ channel ranges).
+%        • Room/environment description loaded from JSON scenario file.
+%        • Robot geometry: UR5 manipulator with metallic rod + microphone.
+%        • Inverse kinematics tolerance and target grid points.
+%   4) Connect to NI USB-4431 data acquisition device:
+%        • One output channel for playback.
+%        • One input channel for microphone signal.
+%   5) Connect to UR5 robot using RTDE client.
+%   6) Build UR5+rod model and environment collision objects, visualise setup.
+%   7) Create a manipulatorRRT planner for collision-free motion.
+%   8) Send robot to home configuration via planned path.
+%   9) Generate an exponential swept-sine for RIR measurement.
+%  10) Loop through all target grid positions:
+%        • Solve collision-aware IK for rod tip position.
+%        • Plan path via RRT, send trajectory to robot, and verify motion.
+%        • Play/record sweep with NI DAQ and compute RIR.
+%        • Save results (RIR, raw signal, position) to disk.
+%        • Optionally log progress or send periodic emails.
+%  11) When finished, stop logging and send completion email with log.
+%  12) If an error occurs, catch it, save crash log, and notify by email.
+%
+%   -------------------------------------------------------------------------
+%   KEY VARIABLES
+%   -------------------------------------------------------------------------
+%   T, Toff, fs, Fband : Sweep parameters (length, silence, sample rate, band).
+%   gain_nexus, gain_sweep : Input/output calibration gains.
+%   scenario, env     : Room/environment description and collision objects.
+%   L0, R0, baseDim   : Rod and robot base dimensions [m].
+%   posRobotGlobal    : Robot base placement in world coordinates [m].
+%   posSourceGlobal   : Source placement in world coordinates [m].
+%   targetPositions   : N×3 matrix of Cartesian measurement points [m].
+%   ur                : RTDE client connected to UR5 robot.
+%   rrt               : manipulatorRRT planner object.
+%   qs                : N×nDOF matrix of joint configurations visited.
+%   ni                : DAQ session for NI USB-4431.
+%   rir, p_meas       : Measured RIR and raw microphone pressure data.
+%
+%   -------------------------------------------------------------------------
+%   REQUIREMENTS
+%   -------------------------------------------------------------------------
+%   • MATLAB Robotics System Toolbox & Data Acquisition Toolbox.
+%   • Auxiliary functions:
+%        – buildUR5WithRod(L0,R0,baseDim): returns UR5 rigidBodyTree model 
+%          with rod and base attached.
+%        – ikPositionCollisionAware: collision-aware IK solver for rod tip.
+%   • Data files:
+%        – grid_cuboid.mat with grid_cuboid variable (Cartesian grid points).
+%        – JSON scenario files (e.g., Environment/kitchen.json).
+%   • Hardware:
+%        – National Instruments USB-4431 data acquisition device.
+%        – Brüel & Kjær Nexus preamp (gain calibration).
+%        – UR5 robot with rod-mounted microphone.
+%
+%   -------------------------------------------------------------------------
+%   USAGE
+%   -------------------------------------------------------------------------
+%   Save the script (e.g., UR5_RIR_Measurement_NI.m) and run:
+%
+%       >> UR5_RIR_Measurement_NI
+%
+%   The script will:
+%       • Move the robot safely through all target points.
+%       • Record and save RIRs in the specified folder structure.
+%       • Provide live visualisation of robot, environment, and impulse 
+%         responses.
+%       • Email logs/results to user on success or failure.
+%
+%   -------------------------------------------------------------------------
+%   OUTPUT
+%   -------------------------------------------------------------------------
+%   • Figures:
+%        – UR5+rod and environment visualisation.
+%        – RIR plots at sample positions.
+%   • Files:
+%        – RIRs and metadata saved to /Data/<scenario>/CuboidData/.
+%        – Log file in system temp directory.
+%   • Emails:
+%        – Progress/error messages sent automatically if configured.
+%
+%   See also BUILDUR5WITHROD, IKPOSITIONCOLLISIONAWARE, URRTDECLIENT, 
+%            MANIPULATORRRT, DAQ, READWRITE.
+%
+% Author: Antonio Figueroa-Duran
+% Contact: anfig@dtu.dk
+
+
 %% ==== Clear workspace ====
 clear, clc, close all
 
@@ -19,7 +122,6 @@ Fband = [20 20E3];  % Sweep bandwidth
 Nsamples = fs*(T+Toff); % A-priori number of samples
 gain_nexus = 1;    % Nexus gain [V/Pa]
 gain_sweep = -12;        % Sweep gain
-maxRep = 3;             % Max repetitions in case of samples over/underrun
 
 % Load scenario
 scenarioName = 'Kitchen';

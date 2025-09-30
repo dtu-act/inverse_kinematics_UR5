@@ -1,3 +1,45 @@
+%% ========================================================================
+% SCRIPT: Single-position RIR measurement with RME Fireface
+%
+% DESCRIPTION:
+%   This script measures Room Impulse Responses (RIRs) using an exponential
+%   sweep played through an RME Fireface USB sound card (ASIO driver).
+%   The sweep is recorded with one or more microphones placed at defined
+%   positions. Both time-domain impulse responses and frequency responses
+%   are obtained, with results saved for later analysis.
+%
+% WORKFLOW:
+%   1) Define measurement parameters (sweep, sample rate, repetitions).
+%   2) Load the acoustic scenario from a JSON file.
+%   3) Configure the audio I/O interface:
+%        • Player: loudspeaker channel
+%        • Recorder: microphone channel
+%   4) Generate and slice exponential sweep into frames.
+%   5) For each source and microphone position:
+%        • Play the sweep and record microphone signal
+%        • Estimate impulse response (RIR)
+%        • Compute and plot impulse & frequency responses
+%        • Save data to disk
+%
+% INPUTS:
+%   - Scenario JSON file: Environment/<scenarioName>.json
+%
+% OUTPUTS:
+%   - Saved RIRs and raw signals in: Data/<ScenarioName>/RT/
+%   - Figures:
+%       • Impulse response and frequency response (Figure 1)
+%       • Spectrogram of recorded signal (Figure 2)
+%
+% REQUIREMENTS:
+%   • MATLAB Audio Toolbox
+%   • RME Fireface USB with ASIO driver
+%   • Custom function: get_dataRME.m
+%
+% AUTHOR: Antonio Figueroa-Duran
+% CONTACT: anfig@dtu.dk
+% ========================================================================
+
+
 %% ==== Clear workspace ====
 clear, clc, close all
 
@@ -15,14 +57,18 @@ maxRep = 2;             % Max repetitions in case of samples over/underrun
 numMicPos = 1;          % Num microphone positions per source position
 numSourcePos = 1;       % Num source positions
 
-% RIR: folder and file structure
-folderData = 'Data/Test';
-fileNamePrefix = 'single_RIR_';
+% Load scenario
+scenarioName = 'Kitchen';
+scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
 
 % Room conditions
-roomDimensions = [6.7 6.25 3.0]; % Room dimensions [m x m x m]
-tempC = 24.2;       % Temperature [C]
-humidityRH = 61.4;  % Relative humidity [%RH]
+roomDimensions = scenario.room_dimensions; % Room dimensions [m x m x m]
+tempC = 22.7;       % Temperature [C]
+humidityRH = 52.2;  % Relative humidity [%RH]
+
+% RIR: folder and file structure
+folderData = ['Data/' scenarioName '/RT/'];
+fileNamePrefix = 'single_RIR_';
 
 %% ==== Connect to SOUNDCARD ====
 infoDev = audiodevinfo;
@@ -47,6 +93,7 @@ Nsamples = nFrames*frameSize;
 Toff = Nsamples/fs - T;
 Nh = fs*Toff;
 t = 0:1/fs:Toff-1/fs;
+f = (0:Nh/2-1)*fs/Nh;
 
 % Gen sweep
 sweep = sweeptone(T,Toff,fs,'SweepFrequencyRange',Fband,'ExcitationLevel',gain_sweep);
@@ -84,10 +131,19 @@ for sPos = 1:numSourcePos
         % Calculate RIR
         rir = impzest(sweep,p_meas);
 
+        rtf = fft(rir)/Nh;
+        rtf = 2*rtf(1:Nh/2);
+
         % Plot RIR
         figure(1)
+        subplot(211), hold on
         plot(t,rir), grid on
-        xlabel('Time /s'), title('Impulse response')
+        xlim([0 100e-3])
+        xlabel('Time / s'), title('Impulse response')
+
+        subplot(212), hold on
+        plot(f,20*log10(abs(rtf))), grid on
+        xlabel('Frequency / Hz'), title('Frequency response')
 
         % Plot spectrogram
         figure(2)
