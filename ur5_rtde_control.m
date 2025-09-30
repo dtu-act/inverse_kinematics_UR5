@@ -84,6 +84,10 @@ baseDim = [Lx Ly Lz];
 % IK: position tolerance
 posTol = 1e-3;          % Position tolerance [meters]
 
+% Load scenario
+scenarioName = 'Kitchen';
+scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
+
 % Target positions: centred array grid + centroid
 centroid = [1 0 0.35];     % New custom array centre (aligned with Lspk)
 load('grid_cuboid.mat');
@@ -120,24 +124,21 @@ posRobotGlobal = [1.31 1.86 1];
 
 % Environment: kitchen
 margin = 5e-2;     % Distance margin to collision boxes [m]
-fridge = collisionBox(0.7 + margin, 0.6 + margin, 2 + margin);   % (Lx, Ly, Lz)
-counter = collisionBox(2.5 + margin, 0.7 + margin, 2 + margin);
+nObjects = numel(scenario.objects);
 
-fridgePosition = [0.35, 2.45, 1];
-counterPosition = [1.25, 0.35, 1];
-
-fridge.Pose = trvec2tform(fridgePosition-posRobotGlobal); % behind robot
-counter.Pose = trvec2tform(counterPosition-posRobotGlobal);
-
-env = {fridge, counter};
+env = cell(1,nObjects);
+for iObj = 1:nObjects
+    dimsPlusMargin = scenario.objects(iObj).dimensions + margin;
+    env{iObj} = collisionBox(dimsPlusMargin(1), dimsPlusMargin(2), dimsPlusMargin(3));   % (Lx, Ly, Lz)
+    env{iObj}.Pose = trvec2tform(scenario.objects(iObj).position'-posRobotGlobal);
+end
 
 % Visualise robot
 jointAngles = readJointConfiguration(ur);
 figure(2)
 show(robot, jointAngles, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(fridge);
-show(counter);
+for iObj = 1:nObjects, show(env{iObj}); end
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -165,8 +166,7 @@ for i = 1:20:size(interpPath,1)
         plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
         text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
         text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-        show(fridge);
-        show(counter);
+        for iObj = 1:nObjects, show(env{iObj}); end
     end
     view(2)
     drawnow
@@ -233,8 +233,7 @@ for iPos = 1:numPositions
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
-            show(fridge);
-            show(counter);
+            for iObj = 1:nObjects, show(env{iObj}); end
         end
         view(2)
         drawnow

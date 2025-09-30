@@ -21,14 +21,18 @@ gain_nexus = 1;    % Nexus gain [V/Pa]
 gain_sweep = -12;        % Sweep gain
 maxRep = 3;             % Max repetitions in case of samples over/underrun
 
-% RIR: folder and file structure
-folderData = 'Data/Kitchen/CuboidData/';
-fileNamePrefix = 'cuboid_RIR_pos_';
+% Load scenario
+scenarioName = 'Kitchen';
+scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
 
 % Room conditions
-roomDimensions = [6.71 6.25 3.02]; % Room dimensions [m x m x m]
+roomDimensions = scenario.room_dimensions;  % Room dimensions [m x m x m]
 tempC = 22.7;       % Temperature [C]
 humidityRH = 52.2;  % Relative humidity [%RH]
+
+% RIR: folder and file structure
+folderData = ['Data/' scenarioName '/CuboidData/'];
+fileNamePrefix = 'cuboid_RIR_pos_';
 
 % Robot: Metallic rod (plastic + rod + microphone)
 L0 = 0.59;      % Length of the metallic rod [meters]
@@ -94,25 +98,22 @@ posRobotGlobal = [1.31 1.86 1];
 % Pos source wrt global world
 posSourceGlobal = [3.68 5.60 1.35];
 
-% Environment: kitchen
+% Environment: load from JSON file
 margin = 5e-2;     % Distance margin to collision boxes [m]
-fridge = collisionBox(0.7 + margin, 0.6 + margin, 2 + margin);   % (Lx, Ly, Lz)
-counter = collisionBox(2.5 + margin, 0.7 + margin, 1 + margin);
+nObjects = numel(scenario.objects);
 
-fridgePosition = [0.35, 2.45, 1];
-counterPosition = [1.25, 0.35, 0.5];
-
-fridge.Pose = trvec2tform(fridgePosition-posRobotGlobal); % behind robot
-counter.Pose = trvec2tform(counterPosition-posRobotGlobal);
-
-env = {fridge, counter};
+env = cell(1,nObjects);
+for iObj = 1:nObjects
+    dimsPlusMargin = scenario.objects(iObj).dimensions + margin;
+    env{iObj} = collisionBox(dimsPlusMargin(1), dimsPlusMargin(2), dimsPlusMargin(3));   % (Lx, Ly, Lz)
+    env{iObj}.Pose = trvec2tform(scenario.objects(iObj).position'-posRobotGlobal);
+end
 
 % Visualise robot
 figure(2)
 show(robot, 'Collisions', 'on', 'Visuals', 'on');
 hold on
-show(fridge);
-show(counter);
+for iObj = 1:nObjects, show(env{iObj}); end
 plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
@@ -136,8 +137,7 @@ clf
 for i = 1:20:size(interpPath,1)
     show(robot,interpPath(i,:),'Collisions','on'); hold on
     if i == 1
-        show(fridge);
-        show(counter);
+        for iObj = 1:nObjects, show(env{iObj}); end
         plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
         text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
         text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
@@ -219,8 +219,7 @@ for iPos = 1:numPositions
     for i = 1:20:size(interpPath,1)
         show(robot,interpPath(i,:),'Collisions','on'); hold on
         if i == 1
-            show(fridge);
-            show(counter);
+            for iObj = 1:nObjects, show(env{iObj}); end
             plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
             text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
             text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')

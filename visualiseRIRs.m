@@ -6,7 +6,7 @@ loadPlotParams
 
 %% Load responses
 % RIR: folder and file structure
-folderData = 'Data/SFControlRoom/CuboidData/';
+folderData = 'Data/Kitchen/CuboidData/';
 fileNamePrefix = 'cuboid_RIR_pos_';
 
 % Load metadata

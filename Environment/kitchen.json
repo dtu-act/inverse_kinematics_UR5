@@ -1,0 +1,16 @@
+{
+  "name": "Kitchen",
+  "room_dimensions": [6.71, 6.25, 3.02],
+  "objects": [
+    {
+      "name": "Fridge",
+      "dimensions": [0.7, 0.6, 2],
+      "position": [0.35, 2.45, 1]
+    },
+    {
+      "name": "Countertop",
+      "dimensions": [2.5, 0.7, 1],
+      "position": [1.25, 0.35, 0.5]
+    }
+  ]
+}

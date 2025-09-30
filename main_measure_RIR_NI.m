@@ -14,14 +14,19 @@ maxRep = 2;             % Max repetitions in case of samples over/underrun
 numMicPos = 6;          % Num microphone positions per source position
 numSourcePos = 1;       % Num source positions
 
-% RIR: folder and file structure
-folderData = 'Data/Kitchen/RT/';
-fileNamePrefix = 'single_RIR_';
+% Load scenario
+scenarioName = 'Kitchen';
+scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
 
 % Room conditions
-roomDimensions = [6.71 6.25 3.02]; % Room dimensions [m x m x m]
+roomDimensions = scenario.room_dimensions; % Room dimensions [m x m x m]
 tempC = 22.7;       % Temperature [C]
 humidityRH = 52.2;  % Relative humidity [%RH]
+
+% RIR: folder and file structure
+folderData = ['Data/' scenarioName '/RT/'];
+fileNamePrefix = 'single_RIR_';
+
 %% ==== Connect to SOUNDCARD ====
 % Configure NI USB4431
 out_range    = [-3.5 3.5];
