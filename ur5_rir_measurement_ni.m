@@ -112,6 +112,15 @@ try % Wrap to send log over email
     diary(logFile);
     diary on
 
+    % Schedule your measurements?
+    targetTime = datetime('2025-10-03 15:30:00');
+    delay = seconds(targetTime - datetime('now'));
+    if delay > 0
+        pause(delay);  % Wait until the target time
+        sendmail('anfig@dtu.dk','ARMando has started measuring', ...
+            'ARMando, your favorite cobot, has started measuring. Its showtime!');
+    end
+
 
 %% ==== Parameters ====
 % RIR: measurement parameters
@@ -121,7 +130,7 @@ fs = 48e3;      % Sampling frequency [Hz]
 Fband = [20 20E3];  % Sweep bandwidth
 Nsamples = fs*(T+Toff); % A-priori number of samples
 gain_nexus = 1;    % Nexus gain [V/Pa]
-gain_sweep = -11;        % Sweep gain
+gain_sweep = -10;        % Sweep gain
 
 % Load scenario
 scenarioName = 'Office';
