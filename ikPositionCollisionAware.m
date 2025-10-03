@@ -111,7 +111,7 @@ for g = 1:randGuesses
     % -- 2d) reject if resulting posture is in collision
     % Check collision but ignore self-collisions to widen feasible set
     isColl = checkCollision(robot,cfg,env,SkippedSelfCollisions="parent");
-    if isColl
+    if any(isColl)
         continue
     end
 
