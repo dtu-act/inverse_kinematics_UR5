@@ -1,4 +1,4 @@
-function [configSol,info] = ikPositionCollisionAware(robot,eeName, ...
+function [configSol,info] = ikPositionCollisionAware(robot,env,eeName, ...
     targetPos,prevConfig)
 %IKPOSITIONCOLLISIONAWARE  Solve collision-aware inverse kinematics (IK) for a target position.
 %
@@ -110,7 +110,7 @@ for g = 1:randGuesses
 
     % -- 2d) reject if resulting posture is in collision
     % Check collision but ignore self-collisions to widen feasible set
-    isColl = checkCollision(robot,cfg,SkippedSelfCollisions="parent");
+    isColl = checkCollision(robot,cfg,env,SkippedSelfCollisions="parent");
     if isColl
         continue
     end

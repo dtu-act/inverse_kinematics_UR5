@@ -100,20 +100,86 @@ baseDim = [Lx Ly Lz];
 posTol = 1e-3;          % Position tolerance [meters]
 
 % Load scenario
-scenarioName = 'Kitchen';
+scenarioName = 'Office';
 scenario = loadScenario(['Environment/' lower(scenarioName) '.json']);
 
 % Pos robot wrt global world
-posRobotGlobal = [1.31 1.86 1];
+posRobotGlobal = [1.068 1.369 1];
 
 % Target positions: centred array grid + centroid
-centroid = [1 0 0];     % New custom array centre
-load('grid_cuboid.mat');
+% centroid = [0.7 0 0.5];     % New custom array centre
+% load('grid_cuboid.mat');
 
-targetPositions = grid_cuboid(1:2:end,:) + centroid;
+% Horizontal plane
+disp('--- Horizontal plane ---')
+dimHor = [80e-2, 1.50, 0];
+resHor = 2.5e-2;
+centroidHor = [0.6 0 0.4];
+
+grid_plane_Hor = gen_gridplane(dimHor, resHor);
+targetPositionsHor = grid_plane_Hor + centroidHor;
+
+% Vertical plane
+disp('--- Vertical plane ---')
+dimVer = [0, 1.50, 0.7];
+resVer = 2.5e-2;
+centroidVer = [0.6 0 0.6];
+
+grid_plane_Ver = gen_gridplane(dimVer, resVer);
+targetPositionsVer = grid_plane_Ver + centroidVer;
+
+targetPositions = [targetPositionsHor; targetPositionsVer];
+
 numPositions = size(targetPositions,1);
 
-clear grid_cuboid
+% clear grid_cuboid
+
+%% SORT POINTS ACCORDING TO THE HAMILTONIAN PATH PROBLEM
+D = squareform(pdist(targetPositions));
+
+targetPositions = findOptimalPath(D, targetPositions);
+
+%% Visualise points in order
+figure
+
+% Define the views for the 4 subplots
+views = [...
+    -37.5 30;   % default 3D
+     0 90;  % XY plane
+     0 0;   % XZ plane
+    90 0];  % YZ plane
+
+hCurrent = gobjects(4,1);  % preallocate handles
+
+for k = 1:4
+    subplot(2,2,k)
+    plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), ...
+        'ro', 'MarkerSize', 1, 'LineWidth', 1.5)
+    hold on, grid on, axis equal
+    view(views(k,:))
+    
+    % Mark initial and final points
+    text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
+    text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+    
+    xlabel('X - axis'), ylabel('Y - axis'), zlabel('Z - axis')
+    
+    % Create a "current position" marker (green dot), initially invisible
+    hCurrent(k) = plot3(NaN, NaN, NaN, 'go', 'MarkerFaceColor','g', 'MarkerSize', 5);
+end
+
+% Animate
+for iPos = 1:numPositions
+    for k = 1:4
+        set(hCurrent(k), ...
+            'XData', targetPositions(iPos,1), ...
+            'YData', targetPositions(iPos,2), ...
+            'ZData', targetPositions(iPos,3));
+    end
+    drawnow limitrate
+    pause(0.01)
+end
+
 
 %% ==== Load UR5 Robot ====
 robot = buildUR5WithRod(L0, R0, baseDim);
@@ -139,6 +205,7 @@ plot3(targetPositions(:,1), targetPositions(:,2), targetPositions(:,3), 'ro', 'M
 plot3(mean(targetPositions(:,1)), mean(targetPositions(:,2)), mean(targetPositions(:,3)), 'ro', 'MarkerSize', 1, 'LineWidth', 2)
 text(targetPositions(1,1), targetPositions(1,2), targetPositions(1,3),'Ini')
 text(targetPositions(end,1), targetPositions(end,2), targetPositions(end,3),'End')
+% text(targetPositions(367,1), targetPositions(367,2), targetPositions(367,3),'PROBLEM')
 title('UR5+Rod+Base and Target Position')
 
 %% ==== Plan sequence of configurations ====
@@ -159,7 +226,7 @@ for iPos = 1:numPositions
     % ---- IK ------------------------------------------------------------
     % Solve for the configuration satisfying the desired end effector position
     point = targetPositions(iPos,:);
-    [qSol,info] = ikPositionCollisionAware(robot,endEffector, ...
+    [qSol,info] = ikPositionCollisionAware(robot, env, endEffector, ...
                    point, qInitial);
 
     % If IK fails to reach the point
