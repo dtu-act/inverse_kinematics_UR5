@@ -113,7 +113,7 @@ try % Wrap to send log over email
     diary on
 
     % Schedule your measurements?
-    targetTime = datetime('2025-10-03 15:30:00');
+    targetTime = datetime('2025-10-03 20:00:00');
     delay = seconds(targetTime - datetime('now'));
     if delay > 0
         pause(delay);  % Wait until the target time
@@ -142,7 +142,7 @@ tempC = 22.6;       % Temperature [C]
 humidityRH = 51.3;  % Relative humidity [%RH]
 
 % RIR: folder and file structure
-folderData = ['Data/' scenarioName '/CuboidData/'];
+folderData = ['Data/' scenarioName '/CuboidData2/'];
 fileNamePrefix = 'cuboid_RIR_pos_';
 
 % Robot: Metallic rod (plastic + rod + microphone)
@@ -158,40 +158,40 @@ baseDim = [Lx Ly Lz];
 % IK: position tolerance
 posTol = 1e-3;          % Position tolerance [meters]
 
-% % Target positions: centred array grid + centroid
-% centroid = [1 0 0.35];     % New custom array centre
-% load('grid_cuboid.mat');
-% 
-% targetPositions = grid_cuboid + centroid;
-% numPositions = size(targetPositions,1);
-% 
-% clear grid_cuboid
+% Target positions: centred array grid + centroid
+centroid = [1 0 0.35];     % New custom array centre
+load('grid_cuboid.mat');
+
+targetPositions = grid_cuboid + centroid;
+numPositions = size(targetPositions,1);
+
+clear grid_cuboid
 
 % Target positions: centred array grid + centroid
 % centroid = [0.7 0 0.5];     % New custom array centre
 % load('grid_cuboid.mat');
 
-% Horizontal plane
-disp('--- Horizontal plane ---')
-dimHor = [80e-2, 1.50, 0];
-resHor = 2.5e-2;
-centroidHor = [0.6 0 0.4];
-
-grid_plane_Hor = gen_gridplane(dimHor, resHor);
-targetPositionsHor = grid_plane_Hor + centroidHor;
-
-% Vertical plane
-disp('--- Vertical plane ---')
-dimVer = [0, 1.50, 0.7];
-resVer = 2.5e-2;
-centroidVer = [0.6 0 0.6];
-
-grid_plane_Ver = gen_gridplane(dimVer, resVer);
-targetPositionsVer = grid_plane_Ver + centroidVer;
-
-targetPositions = [targetPositionsHor; targetPositionsVer];
-
-numPositions = size(targetPositions,1);
+% % Horizontal plane
+% disp('--- Horizontal plane ---')
+% dimHor = [80e-2, 1.50, 0];
+% resHor = 2.5e-2;
+% centroidHor = [0.6 0 0.4];
+% 
+% grid_plane_Hor = gen_gridplane(dimHor, resHor);
+% targetPositionsHor = grid_plane_Hor + centroidHor;
+% 
+% % Vertical plane
+% disp('--- Vertical plane ---')
+% dimVer = [0, 1.50, 0.7];
+% resVer = 2.5e-2;
+% centroidVer = [0.6 0 0.6];
+% 
+% grid_plane_Ver = gen_gridplane(dimVer, resVer);
+% targetPositionsVer = grid_plane_Ver + centroidVer;
+% 
+% targetPositions = [targetPositionsHor; targetPositionsVer];
+% 
+% numPositions = size(targetPositions,1);
 
 %% SORT POINTS ACCORDING TO THE HAMILTONIAN PATH PROBLEM
 D = squareform(pdist(targetPositions));
@@ -291,7 +291,7 @@ end
 show(robot,interpPath(i,:),'Collisions','on');
 hold off
 
-disp('Ready to move the robot?...'), pause
+% disp('Ready to move the robot?...'), pause
 % [result,state] = sendJointConfigurationAndWait(ur,qInitial,'EndTime',5);
 followJointWaypoints(ur, path', 'BlendRadius', 0.02)
 
@@ -319,13 +319,13 @@ save([folderData 'metadata'])
 % RIR visualisation
 figure(3), hold on
 
-disp('Leave the room now!...'), pause
+% disp('Leave the room now!...'), pause
 % pause(45)
 
 tic;
 rng(0)  % Ensure reproducibility in IK calculations
 posError = nan(1,numPositions);
-for iPos = 226:numPositions
+for iPos = 4116:numPositions
     disp(['---- Position ' num2str(iPos) ' -----'])
 
     % ---- IK ------------------------------------------------------------
